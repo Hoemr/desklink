@@ -1,0 +1,8 @@
+{
+  "id_server": "remote.example.com",
+  "server_key": "",
+  "devices": [
+    { "name": "mini", "id": "123456789", "ssh": "mac-mini" },
+    { "name": "pc", "id": "234567890", "ssh": "home-pc" }
+  ]
+}
