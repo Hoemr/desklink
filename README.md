@@ -85,3 +85,7 @@ Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → �
 ## 许可
 
 Desklink 原创代码使用 MIT。RustDesk 的客户端和 OSS 服务端由各平台独立安装，使用上游 AGPL 许可。 [RustDesk 客户端](https://github.com/rustdesk/rustdesk) · [RustDesk Server OSS](https://github.com/rustdesk/rustdesk-server)
+
+## 构建产物
+
+GitHub Actions 在 macOS 和 Windows 的 x64、ARM64 运行器上构建，产物包含启动器、示例配置和说明。Windows 测试用临时协议处理程序接收 `desktop`、`files` 和 `terminal` 发出的链接，并逐条核对地址。实际远程画面和键鼠由 RustDesk 会话验收。
