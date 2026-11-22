@@ -2,7 +2,7 @@
   "id_server": "remote.example.com",
   "server_key": "",
   "devices": [
-    { "name": "mini", "id": "100.64.0.2:21118", "ssh": "mac-mini", "ssh_local_port": 22118 },
+    { "name": "mini", "id": "100.64.0.2:21118", "ssh": "mac-mini", "ssh_user": "user", "ssh_local_port": 22118 },
     { "name": "pc", "id": "234567890", "ssh": "home-pc" }
   ]
 }

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#e9f1f5">
+  <title>Desklink · 远程设备</title>
+  <style>
+    :root { color-scheme: light; color: #123045; background: #e9f1f5; font: 16px/1.5 system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 46rem; margin: 0 auto; padding: clamp(1rem, 5vw, 3rem); }
+    header { border-top: .4rem solid #116181; padding: 1rem 0 1.25rem; }
+    h1 { font-size: clamp(2.2rem, 7vw, 3.5rem); line-height: 1; letter-spacing: -.055em; margin: 0 0 .5rem; }
+    header p { color: #425c6c; margin: 0; }
+    article { border-bottom: 1px solid #a7bfcb; padding: 1rem 0 1.25rem; }
+    article:first-of-type { border-top: 1px solid #a7bfcb; }
+    h2 { margin: 0 0 .65rem; font-size: 1.4rem; overflow-wrap: anywhere; }
+    nav { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: .5rem; margin: .8rem 0; }
+    a { display: grid; place-items: center; min-height: 3rem; padding: .4rem .25rem; border: 1px solid #789aab; border-radius: .4rem; color: #123045; text-align: center; text-decoration: none; }
+    a.primary { color: #fff; background: #116181; border-color: #116181; font-weight: 650; }
+    a:hover { background: #d4e3eb; }
+    a.primary:hover { background: #084d68; }
+    a:focus-visible { outline: 3px solid #005faa; outline-offset: 3px; }
+    dl { margin: .75rem 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .45rem .85rem; align-items: baseline; }
+    dt { font-size: .875rem; color: #425c6c; }
+    dd { margin: 0; min-width: 0; }
+    code { font: .875rem/1.5 ui-monospace, monospace; overflow-wrap: anywhere; user-select: all; }
+    @media (max-width: 36rem) { nav { grid-template-columns: 1fr 1fr; } a.primary { grid-column: 1 / -1; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Desklink</h1>
+      <p>远程设备</p>
+    </header>
+    {{range .}}
+    <article>
+      <h2>{{.Name}}</h2>
+      {{if .ID}}
+      <nav aria-label="{{.Name}} 的 RustDesk 会话">
+        <a class="primary" href="{{remote "desktop" .ID}}">远程桌面</a>
+        <a href="{{remote "files" .ID}}">文件传输</a>
+        <a href="{{remote "terminal" .ID}}">远程终端</a>
+      </nav>
+      {{end}}
+      {{if or .ID .SSH .SSHUser}}
+      <dl>
+        {{if .ID}}<dt>RustDesk</dt><dd><code>{{.ID}}</code></dd>{{end}}
+        {{if .SSHUser}}<dt>手机 SSH</dt><dd><code>{{sshAddress .}}</code></dd>{{end}}
+        {{if .SSH}}<dt>桌面 SSH</dt><dd><code>ssh {{.SSH}}</code></dd>{{end}}
+      </dl>
+      {{end}}
+    </article>
+    {{else}}
+    <p>在 desklink.json 中添加设备，再重新启动面板。</p>
+    {{end}}
+  </main>
+</body>
+</html>

@@ -21,6 +21,7 @@ const usage = `Usage: desklink [-config FILE] [-via-ssh] COMMAND
   list                       List devices
   server                     Show the ID server and its public key
   profile                    Print the RustDesk clipboard import profile
+  panel                      Serve the device panel at 127.0.0.1:22180
   desktop DEVICE             Open a RustDesk desktop session
   terminal DEVICE            Open a RustDesk terminal session
   files DEVICE               Open RustDesk file transfer
@@ -46,6 +47,7 @@ type device struct {
 	Name         string `json:"name"`
 	ID           string `json:"id"`
 	SSH          string `json:"ssh"`
+	SSHUser      string `json:"ssh_user"`
 	SSHLocalPort uint16 `json:"ssh_local_port"`
 }
 
@@ -85,6 +87,9 @@ func loadConfig(path string) (config, error) {
 		if dev.SSH != "" && !sshPattern.MatchString(dev.SSH) {
 			return cfg, fmt.Errorf("invalid SSH alias for %q", dev.Name)
 		}
+		if dev.SSHUser != "" && (!sshPattern.MatchString(dev.SSHUser) || !directTarget) {
+			return cfg, fmt.Errorf("ssh_user for %q requires a valid username and a RustDesk IPv4:port", dev.Name)
+		}
 		if dev.SSHLocalPort != 0 {
 			if !directTarget || dev.SSH == "" {
 				return cfg, fmt.Errorf("SSH tunnel for %q requires an SSH alias and a RustDesk IPv4:port", dev.Name)
@@ -104,11 +109,15 @@ func launch(uri string) error {
 	case "darwin":
 		cmd = exec.Command("open", uri)
 	case "windows":
-		cmd = exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", uri)
+		cmd = exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Start-Process -FilePath '"+uri+"' -ErrorAction Stop")
 	default:
 		return fmt.Errorf("RustDesk launching is unavailable on %s", runtime.GOOS)
 	}
 	return interactive(cmd)
+}
+
+func rustDeskURL(path, target string) string {
+	return "rustdesk://" + path + target
 }
 
 func interactive(cmd *exec.Cmd) error {
@@ -134,7 +143,7 @@ func run(args []string) error {
 		return errors.New("-via-ssh requires desktop, terminal or files")
 	}
 	switch command {
-	case "list", "server", "profile":
+	case "list", "server", "profile", "panel":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: desklink %s", command)
 		}
@@ -165,6 +174,8 @@ func run(args []string) error {
 		return err
 	}
 	switch command {
+	case "panel":
+		return servePanel(cfg.Devices)
 	case "list":
 		for _, dev := range cfg.Devices {
 			fmt.Printf("%s\tRustDesk=%s\tSSH=%s\n", dev.Name, dev.ID, dev.SSH)
@@ -210,7 +221,7 @@ func connect(command string, dev device, args []string, viaSSH bool) error {
 		if target == "" {
 			return fmt.Errorf("no RustDesk ID configured for %q", dev.Name)
 		}
-		return launch("rustdesk://" + path + target)
+		return launch(rustDeskURL(path, target))
 	}
 	if dev.SSH == "" {
 		return fmt.Errorf("no SSH alias configured for %q", dev.Name)
