@@ -61,6 +61,16 @@ Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → �
 
 3. tmux 默认用 `Ctrl+B` 再按 `D` 脱离。重新运行相同名字的 `term` 命令即可接回会话。tmux 需安装在 SSH 目标机且位于 SSH 的 `PATH`。Windows 可作为 SSH 控制端，Windows 被控机本身的原生命令行使用 `ssh` 或 RustDesk 的 `terminal`。
 
+## 通过已有 SSH 跳板连接桌面
+
+当 SSH 别名已经能通过 `ProxyJump` 连到目标时，Mac 或 Windows 可以用同一个别名转发 RustDesk。设备配置中的 `id` 填被控机自身可达的 RustDesk `IPv4:port`，`ssh_local_port` 填本机未占用的端口。被控端启用 IP 直连，并允许该机访问自身地址时使用的来源 IP。多个设备各用一个本机端口。
+
+1. 在一个终端中运行 `desklink tunnel mini`，保留该窗口。OpenSSH 只在客户端的 `127.0.0.1` 监听，并为转发提供加密。
+2. 在另一个终端中运行 `desklink -via-ssh desktop mini`。`files` 和 `terminal` 也支持 `-via-ssh`，可以共用这条隧道。
+3. 在隧道窗口按 `Ctrl+C` 停止转发。
+
+手机可继续用同一台被控机的 Tailscale 地址。 [OpenSSH 本地端口转发](https://man.openbsd.org/ssh#L) · [RustDesk IP 直连](https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/#direct-server)
+
 ## 手机
 
 - [iPhone / iPad](https://apps.apple.com/app/rustdesk-remote-desktop/id1581225015) 和 [Android](https://github.com/rustdesk/rustdesk/releases/tag/1.5.3) 使用相同的 RustDesk 服务器设置。保存目标 ID 到收藏，在远程桌面底栏打开键盘，或在手势帮助里开启虚拟鼠标。 [移动端模式](https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/#show-virtual-mouse)

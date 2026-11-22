@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -15,7 +16,7 @@ import (
 	"strings"
 )
 
-const usage = `Usage: desklink [-config FILE] COMMAND
+const usage = `Usage: desklink [-config FILE] [-via-ssh] COMMAND
 
   list                       List devices
   server                     Show the ID server and its public key
@@ -23,10 +24,12 @@ const usage = `Usage: desklink [-config FILE] COMMAND
   desktop DEVICE             Open a RustDesk desktop session
   terminal DEVICE            Open a RustDesk terminal session
   files DEVICE               Open RustDesk file transfer
+  tunnel DEVICE              Forward the device's RustDesk port over SSH
   ssh DEVICE [COMMAND]       Open SSH or run a remote command
   term DEVICE [SESSION]      Attach to or create a named tmux session
   sessions DEVICE            List named tmux sessions
 
+For desktop, terminal and files, -via-ssh uses a running local tunnel.
 Default config: desklink.json beside the executable.`
 
 var (
@@ -40,9 +43,10 @@ var (
 )
 
 type device struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
-	SSH  string `json:"ssh"`
+	Name         string `json:"name"`
+	ID           string `json:"id"`
+	SSH          string `json:"ssh"`
+	SSHLocalPort uint16 `json:"ssh_local_port"`
 }
 
 type config struct {
@@ -67,19 +71,28 @@ func loadConfig(path string) (config, error) {
 		return cfg, fmt.Errorf("%s: expected one JSON object", path)
 	}
 	seen := make(map[string]bool)
+	localPorts := make(map[uint16]string)
 	for _, dev := range cfg.Devices {
 		if !namePattern.MatchString(dev.Name) || seen[dev.Name] {
 			return cfg, fmt.Errorf("invalid or duplicate device name %q", dev.Name)
 		}
 		seen[dev.Name] = true
-		if dev.ID != "" && !namePattern.MatchString(dev.ID) {
-			addr, err := netip.ParseAddrPort(dev.ID)
-			if err != nil || !addr.Addr().Is4() || addr.Port() == 0 {
-				return cfg, fmt.Errorf("invalid RustDesk ID or IPv4:port for %q", dev.Name)
-			}
+		addr, addrErr := netip.ParseAddrPort(dev.ID)
+		directTarget := addrErr == nil && addr.Addr().Is4() && addr.Port() != 0
+		if dev.ID != "" && !namePattern.MatchString(dev.ID) && !directTarget {
+			return cfg, fmt.Errorf("invalid RustDesk ID or IPv4:port for %q", dev.Name)
 		}
 		if dev.SSH != "" && !sshPattern.MatchString(dev.SSH) {
 			return cfg, fmt.Errorf("invalid SSH alias for %q", dev.Name)
+		}
+		if dev.SSHLocalPort != 0 {
+			if !directTarget || dev.SSH == "" {
+				return cfg, fmt.Errorf("SSH tunnel for %q requires an SSH alias and a RustDesk IPv4:port", dev.Name)
+			}
+			if other, used := localPorts[dev.SSHLocalPort]; used {
+				return cfg, fmt.Errorf("ssh_local_port %d is shared by %q and %q", dev.SSHLocalPort, other, dev.Name)
+			}
+			localPorts[dev.SSHLocalPort] = dev.Name
 		}
 	}
 	return cfg, nil
@@ -106,6 +119,7 @@ func interactive(cmd *exec.Cmd) error {
 func run(args []string) error {
 	flags := flag.NewFlagSet("desklink", flag.ContinueOnError)
 	path := flags.String("config", "", "read this device configuration")
+	viaSSH := flags.Bool("via-ssh", false, "connect via the device's local SSH tunnel")
 	flags.Usage = func() { fmt.Fprintln(flags.Output(), usage) }
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -116,12 +130,15 @@ func run(args []string) error {
 		return nil
 	}
 	command := args[0]
+	if _, ok := rustDeskPaths[command]; *viaSSH && !ok {
+		return errors.New("-via-ssh requires desktop, terminal or files")
+	}
 	switch command {
 	case "list", "server", "profile":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: desklink %s", command)
 		}
-	case "desktop", "terminal", "files", "sessions":
+	case "desktop", "terminal", "files", "sessions", "tunnel":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: desklink %s DEVICE", command)
 		}
@@ -166,18 +183,34 @@ func run(args []string) error {
 	}
 	for _, dev := range cfg.Devices {
 		if dev.Name == args[1] {
-			return connect(command, dev, args[2:])
+			return connect(command, dev, args[2:], *viaSSH)
 		}
 	}
 	return fmt.Errorf("unknown device %q (see desklink list)", args[1])
 }
 
-func connect(command string, dev device, args []string) error {
+func connect(command string, dev device, args []string, viaSSH bool) error {
+	target := dev.ID
+	if viaSSH || command == "tunnel" {
+		if dev.SSHLocalPort == 0 {
+			return fmt.Errorf("set ssh_local_port for %q", dev.Name)
+		}
+		local := fmt.Sprintf("127.0.0.1:%d", dev.SSHLocalPort)
+		if command == "tunnel" {
+			return interactive(exec.Command("ssh", "-NT", "-S", "none", "-o", "ExitOnForwardFailure=yes", "-L", local+":"+target, dev.SSH))
+		}
+		conn, err := net.Dial("tcp", local)
+		if err != nil {
+			return fmt.Errorf("start desklink tunnel %s first: %w", dev.Name, err)
+		}
+		conn.Close()
+		target = local
+	}
 	if path, ok := rustDeskPaths[command]; ok {
-		if dev.ID == "" {
+		if target == "" {
 			return fmt.Errorf("no RustDesk ID configured for %q", dev.Name)
 		}
-		return launch("rustdesk://" + path + dev.ID)
+		return launch("rustdesk://" + path + target)
 	}
 	if dev.SSH == "" {
 		return fmt.Errorf("no SSH alias configured for %q", dev.Name)
