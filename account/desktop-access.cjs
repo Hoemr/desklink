@@ -22,9 +22,11 @@ function passwordFor(device, now) {
 }
 
 function issue(parent, domain, user, nodeId, reply) {
-  if (typeof nodeId !== 'string' || !parent.users[user._id]) return reply(null);
-  parent.GetNodeWithRights(domain, parent.users[user._id], nodeId, (node, rights, visible) => {
-    if (!node || !visible || !parent.users[user._id]) return reply(null);
+  const actor = parent.users[user._id];
+  const locked = (record) => record.siteadmin !== 0xffffffff && (record.siteadmin & 32);
+  if (typeof nodeId !== 'string' || !actor || locked(actor)) return reply(null);
+  parent.GetNodeWithRights(domain, actor, nodeId, (node, rights, visible) => {
+    if (!node || !visible || parent.users[user._id] !== actor || locked(actor)) return reply(null);
     const remoteControl = 8;
     const restricted = 256 | 1024 | 4096 | 65536; // View only, no files, limited input, no desktop.
     if (rights !== 0xffffffff && (!(rights & remoteControl) || (rights & restricted))) return reply(null);

@@ -74,3 +74,49 @@ diff --git a/flutter/lib/main.dart b/flutter/lib/main.dart
 @@ -42,2 +42 @@ Future<void> main(List<String> args) async {
 -  debugPrint("launch args: $args");
    kBootArgs = List.from(args);
+diff --git a/flutter/lib/desktop/pages/desktop_home_page.dart b/flutter/lib/desktop/pages/desktop_home_page.dart
+--- a/flutter/lib/desktop/pages/desktop_home_page.dart
++++ b/flutter/lib/desktop/pages/desktop_home_page.dart
+@@ -79,6 +79,7 @@
+     final isIncomingOnly = bind.isIncomingOnly();
+     final isOutgoingOnly = bind.isOutgoingOnly();
++    final accountOnly = bind.mainGetAppNameSync() == "Desklink";
+     final children = <Widget>[
+-      if (!isOutgoingOnly) buildPresetPasswordWarning(),
++      if (!isOutgoingOnly && !accountOnly) buildPresetPasswordWarning(),
+       if (bind.isCustomClient())
+         Align(
+@@ -90,7 +91,7 @@
+         child: loadLogo(),
+       ),
+-      buildTip(context),
++      buildTip(context, accountOnly),
+       if (!isOutgoingOnly) buildIDBoard(context),
+-      if (!isOutgoingOnly) buildPasswordBoard(context),
++      if (!isOutgoingOnly && !accountOnly) buildPasswordBoard(context),
+       FutureBuilder<Widget>(
+         future: Future.value(
+@@ -387,5 +388,5 @@
+   }
+
+-  buildTip(BuildContext context) {
++  buildTip(BuildContext context, bool accountOnly) {
+     final isOutgoingOnly = bind.isOutgoingOnly();
+     return Padding(
+@@ -413,5 +414,5 @@
+           if (!isOutgoingOnly)
+             Text(
+-              translate("desk_tip"),
++              accountOnly ? "在主控端登录 Desklink 账号连接此设备。" : translate("desk_tip"),
+               overflow: TextOverflow.clip,
+               style: Theme.of(context).textTheme.bodySmall,
+diff --git a/flutter/lib/desktop/pages/desktop_setting_page.dart b/flutter/lib/desktop/pages/desktop_setting_page.dart
+--- a/flutter/lib/desktop/pages/desktop_setting_page.dart
++++ b/flutter/lib/desktop/pages/desktop_setting_page.dart
+@@ -1039,5 +1039,5 @@
+               child: Column(children: [
+                 permissions(context),
+-                password(context),
++                if (bind.mainGetAppNameSync() != "Desklink") password(context),
+                 _Card(title: '2FA', children: [tfa()]),
+                 if (!isChangeIdDisabled())

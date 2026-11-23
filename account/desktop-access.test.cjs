@@ -59,6 +59,9 @@ test('only authorized accounts receive credentials for enrolled nodes', (t) => {
   domain.userconsentflags = 8;
   assert.equal(request(), null);
   domain.userconsentflags = 0;
+  user.siteadmin = 32;
+  assert.equal(request(), null);
+  user.siteadmin = 0;
   writeFileSync(path, '{}');
   assert.equal(request(), null);
   delete parent.users[user._id];

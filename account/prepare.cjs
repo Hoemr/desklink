@@ -1,4 +1,4 @@
-const { copyFileSync, readFileSync, renameSync, writeFileSync } = require('node:fs');
+const { copyFileSync, readFileSync, renameSync, statSync, writeFileSync } = require('node:fs');
 const { dirname, join } = require('node:path');
 const { overrides } = require('./package.json');
 
@@ -43,6 +43,6 @@ patchMesh('                            r[meshid].push(docs[i]);', `             
                             r[meshid].push(docs[i]);`);
 if (meshSource !== originalMeshUser) {
   const staged = `${meshUser}.${process.pid}.tmp`;
-  writeFileSync(staged, meshSource, { flag: 'wx' });
+  writeFileSync(staged, meshSource, { flag: 'wx', mode: statSync(meshUser).mode & 0o777 });
   renameSync(staged, meshUser);
 }
