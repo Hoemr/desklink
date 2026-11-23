@@ -119,11 +119,15 @@ def verify_file_download(desktop_link, expected):
     x, y = str((x1 + x2) // 2), str((y1 + y2) // 2)
     adb("shell", "input", "swipe", x, y, x, y, "700")
     tap_node(wait_for(lambda: label("Local"), "file manager local side"))
-    tap_node(wait_for(lambda: label("Paste here?"), "file transfer paste action"))
+    paste = wait_for(lambda: label("Paste here?"), "file transfer paste action")
+    _, y1, _, y2 = map(int, re.findall(r"\d+", paste.get("bounds")))
+    # The icon buttons are unlabeled. This pinned viewport shows switch,
+    # paste and cancel from left to right, with 15 dp trailing padding.
+    tap(393, (y1 + y2) // 2)
     want = hashlib.sha256(expected.read_bytes()).digest()
 
     def transferred():
-        paths = adb("shell", "find", "/sdcard/", "-name", expected.name, "-type", "f").decode().splitlines()
+        paths = adb("shell", f"find /sdcard/ -name '{expected.name}' -type f 2>/dev/null || true").decode().splitlines()
         return any(hashlib.sha256(adb("exec-out", "dd", f"if={path}", "status=none")).digest() == want for path in paths)
 
     wait_for(transferred, "downloaded file SHA-256", 30)
