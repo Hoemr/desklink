@@ -50,7 +50,7 @@ jobs:
             unzip -q server.zip
           fi
           sudo apt-get update -qq
-          sudo apt-get install -qy --no-install-recommends ./rustdesk.deb xvfb x11-utils python3-tk python3-pil dbus-x11 libayatana-appindicator3-1
+          sudo apt-get install -qy --no-install-recommends ./rustdesk.deb xvfb x11-utils python3-tk python3-pil dbus-x11 libayatana-appindicator3-1 socat
           sudo systemctl stop rustdesk.service
           sudo chmod a+rw /dev/kvm
           cd "$GITHUB_WORKSPACE"

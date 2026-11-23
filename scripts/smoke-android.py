@@ -94,9 +94,9 @@ def android_server_profile(profile):
     # with the same fields that the stock RustDesk settings UI writes.
     print(adb("root").decode(), flush=True)
     adb("wait-for-device")
-    for port in (21115, 21116, 21117):
-        socket_name = f"tcp:{port}"
-        adb("reverse", socket_name, socket_name)
+    adb("reverse", "tcp:21115", "tcp:21115")
+    adb("reverse", "tcp:21116", "tcp:21116")
+    adb("reverse", "tcp:21117", "tcp:22117")
     adb("shell", "am", "start", "-W", "-n", f"{PACKAGE}/.MainActivity")
     folder = f"/data/user/0/{PACKAGE}/app_flutter"
     owner = wait_for(lambda: adb("shell", "stat", "-c", "%u:%g", folder).decode().strip(), "Android app documents")
@@ -141,7 +141,7 @@ def fixture(log):
 
 def main():
     relay = os.environ.get("DESKLINK_TEST_ROUTE") == "relay"
-    target = FIXTURE_ID if relay else "10.0.2.2:21118"
+    target = FIXTURE_ID if relay else "127.0.0.1:21118"
     config = WORK / "desklink.json"
     devices = {"devices": [{"name": "fixture", "id": target}]}
     os.environ["XDG_CONFIG_HOME"] = str((WORK / "fixture-config").resolve())
@@ -164,9 +164,15 @@ def main():
                   env={**os.environ, "ALWAYS_USE_RELAY": "Y", "RUST_LOG": "debug"})
             key = wait_for(lambda: (state / "id_ed25519.pub").read_text().strip(), "self-hosted server public key")
             start("hbbr", str(server / "hbbr"), "-k", "_", cwd=state)
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
+                route.connect(("192.0.2.1", 9))
+                relay_ip = route.getsockname()[0]
+            # hbbr reserves raw TCP from loopback for its local console. Relay
+            # the emulator-facing local port through the runner's normal IP.
+            start("relay-forward", "socat", "TCP-LISTEN:22117,bind=127.0.0.1,reuseaddr,fork", f"TCP:{relay_ip}:21117")
             devices.update(id_server="127.0.0.1:21116", server_key=key)
             host_options = {'direct-server': 'N', 'custom-rendezvous-server': '127.0.0.1:21116',
-                            'relay-server': '127.0.0.1:21117', 'key': key}
+                            'relay-server': f'{relay_ip}:21117', 'key': key}
             host_identity += f'id = "{FIXTURE_ID}"\n'
 
         config.write_text(json.dumps(devices), encoding="utf-8")
@@ -201,6 +207,8 @@ def main():
         if relay:
             profile = json.loads(subprocess.check_output([str(WORK / "desklink"), "-config", str(config), "profile"]))
             android_server_profile(profile)
+        else:
+            adb("reverse", "tcp:21118", "tcp:21118")
         print(adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", href, "-p", PACKAGE).decode(), flush=True)
 
         password = wait_for(password_field, "RustDesk password field")
