@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Ylianst/MeshCentral/1.3.1/meshcentral-config-schema.json",
+  "settings": {
+    "cert": "desklink.example.com",
+    "port": 24443,
+    "portBind": "127.0.0.1",
+    "aliasPort": 443,
+    "exactPorts": true,
+    "redirPort": 0,
+    "mpsPort": 0,
+    "tlsOffload": "127.0.0.1",
+    "selfUpdate": false
+  },
+  "domains": {
+    "": {
+      "title": "Desklink",
+      "certUrl": "https://desklink.example.com/",
+      "minify": true,
+      "newAccounts": false,
+      "guestDeviceSharing": false,
+      "mstsc": false,
+      "ssh": true
+    }
+  }
+}

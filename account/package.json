@@ -1,0 +1,18 @@
+{
+  "name": "desklink-account",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "meshcentral"
+  },
+  "dependencies": {
+    "meshcentral": "1.3.1",
+    "ssh2": "1.17.0"
+  },
+  "overrides": {
+    "compression": "1.8.2",
+    "express": "4.22.3",
+    "node-forge": "1.4.4",
+    "qs": "6.17.1"
+  }
+}
