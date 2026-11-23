@@ -30,9 +30,9 @@ def tap(x, y):
 
 def ui():
     adb("shell", "uiautomator", "dump", "/sdcard/window.xml")
-    xml = adb("exec-out", "cat", "/sdcard/window.xml")
-    (REPORT / "latest.xml").write_bytes(xml)
-    return list(ET.fromstring(xml).iter("node"))
+    xml = REPORT / "latest.xml"
+    adb("pull", "/sdcard/window.xml", str(xml))
+    return list(ET.parse(xml).iter("node"))
 
 
 def tap_node(node):
@@ -120,7 +120,8 @@ def main():
     host = "10.0.2.2:21118"
     config = WORK / "desklink.json"
     config.write_text(json.dumps({"devices": [{"name": "fixture", "id": host}]}), encoding="utf-8")
-    rustdesk_config = Path.home() / ".config/rustdesk"
+    os.environ["XDG_CONFIG_HOME"] = str((WORK / "fixture-config").resolve())
+    rustdesk_config = Path(os.environ["XDG_CONFIG_HOME"]) / "rustdesk"
     rustdesk_config.mkdir(parents=True, exist_ok=True)
     (rustdesk_config / "RustDesk.toml").write_text(f'password = "{PASSWORD}"\n', encoding="utf-8")
     (rustdesk_config / "RustDesk2.toml").write_text(
@@ -192,6 +193,9 @@ def main():
 if len(sys.argv) > 2 and sys.argv[2] == "host":
     fixture(REPORT)
 else:
+    serial = adb("get-serialno").decode().strip()
+    if not re.fullmatch(r"emulator-\d+", serial):
+        raise RuntimeError("The smoke test requires an Android emulator")
     try:
         main()
     except Exception:
