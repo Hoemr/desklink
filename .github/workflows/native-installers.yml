@@ -7,6 +7,9 @@ name: Desklink host installers
         description: Run ID of a Graphical desktop builds workflow for RustDesk 1.5.3
         required: true
         type: string
+      bridge_run:
+        description: Reuse the Rust bridge artifact from a Desklink host installers run for RustDesk 1.5.3
+        type: string
       platform:
         description: Installers to build
         type: choice
@@ -23,6 +26,7 @@ env:
 
 jobs:
   bridge:
+    if: inputs.bridge_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -55,7 +59,7 @@ jobs:
 
   macos:
     needs: bridge
-    if: inputs.platform != 'windows'
+    if: ${{ always() && !cancelled() && inputs.platform != 'windows' && (inputs.bridge_run != '' || needs.bridge.result == 'success') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 95
     strategy:
@@ -93,6 +97,8 @@ jobs:
         with:
           name: desklink-host-bridge
           path: upstream/src
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.bridge_run || github.run_id }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: desklink-graphical-macos-${{ matrix.architecture }}
@@ -118,6 +124,7 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: '12.3'
         run: |
           "$VCPKG_ROOT/vcpkg" install --triplet "$VCPKG_DEFAULT_TRIPLET" --x-install-root="$VCPKG_ROOT/installed"
+          export LIBCLANG_PATH="$(dirname "$(xcrun --find clang)")/../lib"
           cargo +1.81 build --locked --target "$RUST_TARGET" --release --lib --bin service --features "$RUST_FEATURES"
       - name: Package Desklink
         run: |
@@ -161,7 +168,7 @@ jobs:
 
   windows:
     needs: bridge
-    if: inputs.platform != 'macos'
+    if: ${{ always() && !cancelled() && inputs.platform != 'macos' && (inputs.bridge_run != '' || needs.bridge.result == 'success') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 95
     strategy:
@@ -199,6 +206,8 @@ jobs:
         with:
           name: desklink-host-bridge
           path: upstream/src
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.bridge_run || github.run_id }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: desklink-graphical-windows-${{ matrix.architecture }}

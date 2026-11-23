@@ -43,6 +43,12 @@ codesign --verify --deep --strict "$app"
 test "$("$app/Contents/MacOS/Desklink" --version)" = 1.5.3
 
 pkgbuild --analyze --root "$stage/payload" "$stage/components.plist"
-test "$(/usr/libexec/PlistBuddy -c 'Print :0:RootRelativeBundlePath' "$stage/components.plist")" = Desklink.app
-/usr/libexec/PlistBuddy -c 'Set :0:BundleIsRelocatable false' "$stage/components.plist"
+python3 -c '
+import pathlib, plistlib, sys
+path = pathlib.Path(sys.argv[1])
+components = plistlib.loads(path.read_bytes())
+assert len(components) == 1 and components[0]["RootRelativeBundlePath"] == "Desklink.app"
+components[0]["BundleIsRelocatable"] = False
+path.write_bytes(plistlib.dumps(components))
+' "$stage/components.plist"
 pkgbuild --root "$stage/payload" --component-plist "$stage/components.plist" --identifier com.hoemr.desklink.host --version 1.5.3 --install-location /Applications "$output"
