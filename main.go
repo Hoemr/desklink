@@ -46,15 +46,37 @@ var (
 type device struct {
 	Name         string `json:"name"`
 	ID           string `json:"id"`
+	Address      string `json:"address"`
 	SSH          string `json:"ssh"`
 	SSHUser      string `json:"ssh_user"`
 	SSHLocalPort uint16 `json:"ssh_local_port"`
+}
+
+func (d device) Target() string {
+	if d.ID != "" {
+		return d.ID
+	}
+	return d.Address
 }
 
 type config struct {
 	IDServer  string   `json:"id_server"`
 	ServerKey string   `json:"server_key"`
 	Devices   []device `json:"devices"`
+}
+
+type serverProfile struct {
+	Host string `json:"host"`
+	Key  string `json:"key"`
+}
+
+func (cfg config) profile() serverProfile {
+	return serverProfile{Host: strings.TrimSpace(cfg.IDServer), Key: strings.TrimSpace(cfg.ServerKey)}
+}
+
+func isDirectAddress(value string) bool {
+	addr, err := netip.ParseAddrPort(value)
+	return err == nil && addr.Addr().Is4() && addr.Port() != 0
 }
 
 func loadConfig(path string) (config, error) {
@@ -74,25 +96,33 @@ func loadConfig(path string) (config, error) {
 	}
 	seen := make(map[string]bool)
 	localPorts := make(map[uint16]string)
-	for _, dev := range cfg.Devices {
+	for i := range cfg.Devices {
+		dev := &cfg.Devices[i]
 		if !namePattern.MatchString(dev.Name) || seen[dev.Name] {
 			return cfg, fmt.Errorf("invalid or duplicate device name %q", dev.Name)
 		}
 		seen[dev.Name] = true
-		addr, addrErr := netip.ParseAddrPort(dev.ID)
-		directTarget := addrErr == nil && addr.Addr().Is4() && addr.Port() != 0
-		if dev.ID != "" && !namePattern.MatchString(dev.ID) && !directTarget {
-			return cfg, fmt.Errorf("invalid RustDesk ID or IPv4:port for %q", dev.Name)
+		if dev.ID != "" && !namePattern.MatchString(dev.ID) {
+			if !isDirectAddress(dev.ID) {
+				return cfg, fmt.Errorf("invalid RustDesk ID or IPv4:port for %q", dev.Name)
+			}
+			if dev.Address != "" {
+				return cfg, fmt.Errorf("use only address for the direct IP of %q", dev.Name)
+			}
+			dev.Address, dev.ID = dev.ID, ""
+		}
+		if dev.Address != "" && !isDirectAddress(dev.Address) {
+			return cfg, fmt.Errorf("address for %q must be a RustDesk IPv4:port", dev.Name)
 		}
 		if dev.SSH != "" && !sshPattern.MatchString(dev.SSH) {
 			return cfg, fmt.Errorf("invalid SSH alias for %q", dev.Name)
 		}
-		if dev.SSHUser != "" && (!sshPattern.MatchString(dev.SSHUser) || !directTarget) {
-			return cfg, fmt.Errorf("ssh_user for %q requires a valid username and a RustDesk IPv4:port", dev.Name)
+		if dev.SSHUser != "" && (!sshPattern.MatchString(dev.SSHUser) || dev.Address == "") {
+			return cfg, fmt.Errorf("ssh_user for %q requires a valid username and an address", dev.Name)
 		}
 		if dev.SSHLocalPort != 0 {
-			if !directTarget || dev.SSH == "" {
-				return cfg, fmt.Errorf("SSH tunnel for %q requires an SSH alias and a RustDesk IPv4:port", dev.Name)
+			if dev.Address == "" || dev.SSH == "" {
+				return cfg, fmt.Errorf("SSH tunnel for %q requires an SSH alias and an address", dev.Name)
 			}
 			if other, used := localPorts[dev.SSHLocalPort]; used {
 				return cfg, fmt.Errorf("ssh_local_port %d is shared by %q and %q", dev.SSHLocalPort, other, dev.Name)
@@ -175,21 +205,25 @@ func run(args []string) error {
 	}
 	switch command {
 	case "panel":
-		return servePanel(cfg.Devices)
+		return servePanel(cfg)
 	case "list":
 		for _, dev := range cfg.Devices {
-			fmt.Printf("%s\tRustDesk=%s\tSSH=%s\n", dev.Name, dev.ID, dev.SSH)
+			fmt.Printf("%s\tRustDesk=%s\tSSH=%s", dev.Name, dev.Target(), dev.SSH)
+			if dev.ID != "" && dev.Address != "" {
+				fmt.Printf("\tAddress=%s", dev.Address)
+			}
+			fmt.Println()
 		}
 		return nil
 	case "server", "profile":
-		host, key := strings.TrimSpace(cfg.IDServer), strings.TrimSpace(cfg.ServerKey)
-		if host == "" || key == "" {
+		profile := cfg.profile()
+		if profile.Host == "" || profile.Key == "" {
 			return errors.New("set id_server and server_key in desklink.json")
 		}
 		if command == "profile" {
-			return json.NewEncoder(os.Stdout).Encode(map[string]string{"host": host, "key": key})
+			return json.NewEncoder(os.Stdout).Encode(profile)
 		}
-		fmt.Printf("ID server: %s\nKey: %s\n", host, key)
+		fmt.Printf("ID server: %s\nKey: %s\n", profile.Host, profile.Key)
 		return nil
 	}
 	for _, dev := range cfg.Devices {
@@ -201,14 +235,14 @@ func run(args []string) error {
 }
 
 func connect(command string, dev device, args []string, viaSSH bool) error {
-	target := dev.ID
+	target := dev.Target()
 	if viaSSH || command == "tunnel" {
 		if dev.SSHLocalPort == 0 {
 			return fmt.Errorf("set ssh_local_port for %q", dev.Name)
 		}
 		local := fmt.Sprintf("127.0.0.1:%d", dev.SSHLocalPort)
 		if command == "tunnel" {
-			return interactive(exec.Command("ssh", "-NT", "-S", "none", "-o", "ExitOnForwardFailure=yes", "-L", local+":"+target, dev.SSH))
+			return interactive(exec.Command("ssh", "-NT", "-S", "none", "-o", "ExitOnForwardFailure=yes", "-L", local+":"+dev.Address, dev.SSH))
 		}
 		conn, err := net.Dial("tcp", local)
 		if err != nil {

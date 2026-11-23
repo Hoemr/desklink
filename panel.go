@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -20,14 +22,29 @@ var devicePanel = template.Must(template.New("panel").Funcs(template.FuncMap{
 		return template.URL(rustDeskURL(rustDeskPaths[command], target))
 	},
 	"sshAddress": func(dev device) string {
-		address, _ := netip.ParseAddrPort(dev.ID)
+		address, _ := netip.ParseAddrPort(dev.Address)
 		return dev.SSHUser + "@" + address.Addr().String()
 	},
 }).Parse(panelHTML))
 
-func servePanel(devices []device) error {
+func renderPanel(w io.Writer, cfg config) error {
+	view := struct {
+		Devices []device
+		Profile string
+	}{Devices: cfg.Devices}
+	if profile := cfg.profile(); profile.Host != "" && profile.Key != "" {
+		data, err := json.Marshal(profile)
+		if err != nil {
+			return err
+		}
+		view.Profile = string(data)
+	}
+	return devicePanel.Execute(w, view)
+}
+
+func servePanel(cfg config) error {
 	var document bytes.Buffer
-	if err := devicePanel.Execute(&document, devices); err != nil {
+	if err := renderPanel(&document, cfg); err != nil {
 		return err
 	}
 

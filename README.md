@@ -38,13 +38,13 @@ flowchart LR
 
 ## 使用已有 Tailscale
 
-Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → 安全中开启「IP 直连」并将来源 IP 白名单设为你的 Tailscale 设备地址。客户端用被控机的 Tailscale `IPv4:21118` 连接，Desklink 配置的 `id` 也支持该格式。此模式由 Tailscale 提供链路加密，`tailscale ping` 可查看底层是点对点还是 DERP。 [RustDesk IP 直连](https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/#direct-server) · [Tailscale 连接类型](https://tailscale.com/docs/reference/connection-types)
+Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → 安全中开启「IP 直连」并将来源 IP 白名单设为你的 Tailscale 设备地址。将被控机的 Tailscale `IPv4:21118` 填到 `address`。若同时填写 `id`，面板主按钮会通过 RustDesk 设备 ID 建连，旁边的「IP 直连」链接使用这个地址。旧配置中的 `id: "IPv4:port"` 仍可使用。此模式由 Tailscale 提供链路加密，`tailscale ping` 可查看底层是点对点还是 DERP。 [RustDesk IP 直连](https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/#direct-server) · [Tailscale 连接类型](https://tailscale.com/docs/reference/connection-types)
 
 ## Mac / Windows 命令行
 
 需要 Go 1.23+ 进行源码构建。运行时使用已安装的 RustDesk 和 OpenSSH Client。示例里的 `mac-mini` 是 SSH 配置的 Host 别名，可以使用 `ProxyJump`。先确认 `ssh mac-mini hostname` 成功。
 
-1. 在 macOS 终端或 PowerShell 中运行 `go build .`。从 [desklink.example.json](desklink.example.json) 复制一份 `desklink.json` 到二进制同目录，写入实际的 RustDesk ID 或 `IPv4:port`、SSH 别名，以及自托管服务器的地址和公钥。密码和私钥保留在各自客户端。
+1. 在 macOS 终端或 PowerShell 中运行 `go build .`。从 [desklink.example.json](desklink.example.json) 复制一份 `desklink.json` 到二进制同目录，配置 RustDesk 设备 ID `id`、可选的内网 `address`、SSH 别名和自托管服务器公钥。密码和私钥保留在各自客户端。
 2. macOS 用 `./desklink`，PowerShell 用 `./desklink.exe`。
 
    ```text
@@ -63,7 +63,7 @@ Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → �
 
 ## 通过已有 SSH 跳板连接桌面
 
-当 SSH 别名已经能通过 `ProxyJump` 连到目标时，Mac 或 Windows 可以用同一个别名转发 RustDesk。设备配置中的 `id` 填被控机自身可达的 RustDesk `IPv4:port`，`ssh_local_port` 填本机未占用的端口。被控端启用 IP 直连，并允许该机访问自身地址时使用的来源 IP。多个设备各用一个本机端口。
+当 SSH 别名已经能通过 `ProxyJump` 连到目标时，Mac 或 Windows 可以用同一个别名转发 RustDesk。用 `address` 指定被控机自身可达的 RustDesk `IPv4:port`，用 `ssh_local_port` 指定本机未占用的端口。被控端启用 IP 直连，并允许该机访问自身地址时使用的来源 IP。多个设备各用一个本机端口。
 
 1. 在一个终端中运行 `desklink tunnel mini`，保留该窗口。OpenSSH 只在客户端的 `127.0.0.1` 监听，并为转发提供加密。
 2. 在另一个终端中运行 `desklink -via-ssh desktop mini`。`files` 和 `terminal` 也支持 `-via-ssh`，可以共用这条隧道。
@@ -76,6 +76,7 @@ Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → �
 1. 在常开的 Mac 上运行 `desklink panel`。面板读取启动时的 `desklink.json`，在 `127.0.0.1:22180` 提供设备列表。
 2. 要从手机打开面板，在同一台主机用 `tailscale serve --bg --http=22180 http://127.0.0.1:22180`，然后在手机浏览器打开命令返回的 MagicDNS URL。手机和主机须加入同一个 tailnet。 [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)
 3. 点击远程桌面可交给已安装的 RustDesk，也可长按复制目标地址。IP 直连设备有 `ssh_user` 时，面板会显示用于 SSH 客户端的 `用户名@地址`，使用被控机默认的 SSH 端口 22。
+4. 配置了自托管服务器时，可展开「RustDesk 服务器配置」，复制整段文本，在 RustDesk 的「ID/中继服务器」中导入。
 
 浏览器启用系统代理时，将面板的 MagicDNS 域名加入直连规则。面板由 Tailscale 内网提供。
 
