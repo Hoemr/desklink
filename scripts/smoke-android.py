@@ -94,6 +94,9 @@ def android_server_profile(profile):
     # with the same fields that the stock RustDesk settings UI writes.
     print(adb("root").decode(), flush=True)
     adb("wait-for-device")
+    for port in (21115, 21116, 21117):
+        socket_name = f"tcp:{port}"
+        adb("reverse", socket_name, socket_name)
     adb("shell", "am", "start", "-W", "-n", f"{PACKAGE}/.MainActivity")
     folder = f"/data/user/0/{PACKAGE}/app_flutter"
     owner = wait_for(lambda: adb("shell", "stat", "-c", "%u:%g", folder).decode().strip(), "Android app documents")
@@ -157,11 +160,11 @@ def main():
             server = WORK / "amd64"
             state = WORK / "relay-state"
             state.mkdir()
-            start("hbbs", str(server / "hbbs"), "-r", "10.0.2.2:21117", "-k", "_", cwd=state,
-                  env={**os.environ, "ALWAYS_USE_RELAY": "Y"})
+            start("hbbs", str(server / "hbbs"), "-r", "127.0.0.1:21117", "-k", "_", cwd=state,
+                  env={**os.environ, "ALWAYS_USE_RELAY": "Y", "RUST_LOG": "debug"})
             key = wait_for(lambda: (state / "id_ed25519.pub").read_text().strip(), "self-hosted server public key")
             start("hbbr", str(server / "hbbr"), "-k", "_", cwd=state)
-            devices.update(id_server="10.0.2.2:21116", server_key=key)
+            devices.update(id_server="127.0.0.1:21116", server_key=key)
             host_options = {'direct-server': 'N', 'custom-rendezvous-server': '127.0.0.1:21116',
                             'relay-server': '127.0.0.1:21117', 'key': key}
             host_identity += f'id = "{FIXTURE_ID}"\n'
@@ -190,6 +193,7 @@ def main():
 
         adb("install", "-g", str(WORK / "rustdesk.apk"))
         adb("shell", "settings", "put", "global", "hide_error_dialogs", "1")
+        adb("shell", "settings", "put", "secure", "immersive_mode_confirmations", "confirmed")
         adb("shell", "wm", "size", "480x960")
         adb("shell", "wm", "density", "160")
         adb("shell", "settings", "put", "system", "accelerometer_rotation", "0")
