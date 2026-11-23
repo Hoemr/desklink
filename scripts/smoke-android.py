@@ -238,6 +238,7 @@ def main():
         print("PASS Android virtual mouse sends a right-click", flush=True)
 
         tap(440, 558)  # Close the gesture help sheet using its floating button.
+        wait_for(lambda: label("Show virtual mouse") is None, "gesture help to close")
         tap(120, 936)  # Open the remote session's keyboard.
         wait_for(keyboard_visible, "Android soft keyboard")
         screenshot("keyboard")
