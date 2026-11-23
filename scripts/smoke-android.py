@@ -59,9 +59,12 @@ def label(*texts):
 
 def password_field():
     nodes = ui()
-    hint = next((node for node in nodes if node.get("text") == "Got it"), None)
-    if hint is not None:
-        tap_node(hint)
+    labels = {node.get("text"): node for node in nodes}
+    if "Got it" in labels:
+        tap_node(labels["Got it"])
+        return None
+    if "Pixel Launcher isn't responding" in labels and "Close app" in labels:
+        tap_node(labels["Close app"])
         return None
     return next((node for node in nodes if node.get("password") == "true"), None)
 
@@ -144,6 +147,7 @@ def main():
         assert href == f"rustdesk://connection/new/{host}", href
 
         adb("install", "-g", str(WORK / "rustdesk.apk"))
+        adb("shell", "settings", "put", "global", "hide_error_dialogs", "1")
         adb("shell", "wm", "size", "480x960")
         adb("shell", "wm", "density", "160")
         adb("shell", "settings", "put", "system", "accelerometer_rotation", "0")
