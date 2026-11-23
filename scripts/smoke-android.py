@@ -57,6 +57,15 @@ def label(*texts):
     return next((node for node in ui() if node.get("text") in texts or node.get("content-desc") in texts), None)
 
 
+def password_field():
+    nodes = ui()
+    hint = next((node for node in nodes if node.get("text") == "Got it"), None)
+    if hint is not None:
+        tap_node(hint)
+        return None
+    return next((node for node in nodes if node.get("password") == "true"), None)
+
+
 def screenshot(name):
     path = REPORT / f"{name}.png"
     path.write_bytes(adb("exec-out", "screencap", "-p"))
@@ -135,7 +144,7 @@ def main():
         adb("shell", "settings", "put", "system", "user_rotation", "0")
         print(adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", href, "-p", PACKAGE).decode(), flush=True)
 
-        password = wait_for(lambda: next((n for n in ui() if n.get("password") == "true"), None), "RustDesk password field")
+        password = wait_for(password_field, "RustDesk password field")
         screenshot("password")
         tap_node(password)
         adb("shell", "input", "text", PASSWORD)
@@ -146,9 +155,12 @@ def main():
 
         # RustDesk 1.5.3 displays an immersive bottom bar on the 480x960 test device.
         tap(184, 920)
+        tap_node(wait_for(lambda: label("Touch mode"), "Touch mode"))
         control = wait_for(lambda: label("Show virtual mouse"), "virtual mouse toggle")
         tap_node(control)
         screenshot("gesture-settings")
+        ui()
+        (REPORT / "gesture-settings.xml").write_bytes((REPORT / "latest.xml").read_bytes())
         tap(444, 924)
         time.sleep(0.5)
         screenshot("virtual-mouse")
