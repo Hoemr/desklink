@@ -177,10 +177,12 @@ def main():
         tap(120, 936)  # Open the remote session's keyboard.
         wait_for(keyboard_visible, "Android soft keyboard")
         screenshot("keyboard")
-        ui()
-        adb("shell", "input", "text", "desklink42")
-        wait_for(lambda: "desklink42" in (REPORT / "typed.txt").read_text(), "text on the remote desktop")
-        print("PASS Android soft keyboard opens and text reaches the desktop", flush=True)
+        # Tap d, e, s, k in the emulator's US QWERTY soft keyboard.
+        for x, y in [(144, 762), (119, 704), (96, 762), (382, 762)]:
+            tap(x, y)
+        wait_for(lambda: (REPORT / "typed.txt").read_text() == "desk", "soft-key taps on the remote desktop")
+        screenshot("keyboard-result")
+        print("PASS Android on-screen keyboard taps type 'desk' on the desktop", flush=True)
 
 
 if len(sys.argv) > 2 and sys.argv[2] == "host":

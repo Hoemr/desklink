@@ -7,6 +7,10 @@ name: Android remote control
     paths:
       - '.github/workflows/android.yml'
       - 'scripts/smoke-android.py'
+      - 'go.mod'
+      - 'main.go'
+      - 'panel.go'
+      - 'panel.html'
 
 permissions:
   contents: read
