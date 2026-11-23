@@ -56,6 +56,7 @@ type device struct {
 	SSHTunnel    string `json:"ssh_tunnel"`
 	SSHUser      string `json:"ssh_user"`
 	SSHLocalPort uint16 `json:"ssh_local_port"`
+	FileLimitKbps uint32 `json:"file_limit_kbps"`
 }
 
 func (d device) tunnelAlias() string {
@@ -298,7 +299,7 @@ func connect(command string, dev device, args []string, viaSSH bool, profile ser
 		return launch(rustDeskURL(path, target, profile))
 	}
 	if command == "send" || command == "get" {
-		arguments, err := copyArguments(command, dev.tunnelAlias(), args[0], args[1])
+		arguments, err := copyArguments(command, dev.tunnelAlias(), args[0], args[1], dev.FileLimitKbps)
 		if err != nil {
 			return err
 		}
@@ -324,7 +325,7 @@ func connect(command string, dev device, args []string, viaSSH bool, profile ser
 	}
 }
 
-func copyArguments(command, alias, source, destination string) ([]string, error) {
+func copyArguments(command, alias, source, destination string, limitKbps uint32) ([]string, error) {
 	if alias == "" {
 		return nil, errors.New("configure an SSH alias for file transfer")
 	}
@@ -340,7 +341,11 @@ func copyArguments(command, alias, source, destination string) ([]string, error)
 		return nil, err
 	}
 	remote = alias + ":" + remote
-	arguments := []string{"-s", "-r", "-o", "Compression=no", "-o", "ControlMaster=no", "-o", "ControlPath=none", "--"}
+	arguments := []string{"-s", "-r", "-o", "Compression=no", "-o", "ControlMaster=no", "-o", "ControlPath=none"}
+	if limitKbps > 0 {
+		arguments = append(arguments, "-l", strconv.FormatUint(uint64(limitKbps), 10))
+	}
+	arguments = append(arguments, "--")
 	if command == "get" {
 		return append(arguments, remote, local), nil
 	}

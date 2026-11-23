@@ -110,7 +110,7 @@ desklink send mini "./dataset.tar" "/Users/remote/dataset.tar"
 desklink get mini "/Users/remote/dataset.tar" "./dataset-copy.tar"
 ```
 
-速度取决于链路带宽。传输到已有路径时，OpenSSH 按目标路径执行覆盖，重要文件可先传到新文件名。App 的「传输文件」按钮使用 RustDesk 原生文件管理器，直连和中继受实际网络条件影响。 [OpenSSH 文件传输说明](https://man.openbsd.org/scp) · [RustDesk Android 文件传输](https://rustdesk.com/docs/en/client/android/#file-transfer-android)
+速度取决于链路带宽。和 SSH 共用带宽有限的 VPS 时，可在设备配置里设置 `file_limit_kbps`，为交互终端留出带宽。`0` 使用线路可用速率。传输到已有路径时，OpenSSH 按目标路径执行覆盖，重要文件可先传到新文件名。App 的「传输文件」按钮使用 RustDesk 原生文件管理器，直连和中继受实际网络条件影响。 [OpenSSH 文件传输说明](https://man.openbsd.org/scp) · [RustDesk Android 文件传输](https://rustdesk.com/docs/en/client/android/#file-transfer-android)
 
 手机可继续用同一台被控机的 Tailscale 地址。 [OpenSSH 本地端口转发](https://man.openbsd.org/ssh#L) · [RustDesk IP 直连](https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/#direct-server)
 

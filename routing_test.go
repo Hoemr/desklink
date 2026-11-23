@@ -73,18 +73,18 @@ func TestCopyUsesIndependentSSHAndLiteralLocalPath(t *testing.T) {
 		{"send", local, remote, local, "mini-bulk:" + remote},
 		{"get", remote, local, "mini-bulk:" + remote, local},
 	} {
-		args, err := copyArguments(test.command, "mini-bulk", test.source, test.destination)
+		args, err := copyArguments(test.command, "mini-bulk", test.source, test.destination, 3600)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if args[0] != "-s" || !strings.Contains(strings.Join(args, " "), "Compression=no -o ControlMaster=no -o ControlPath=none --") || args[len(args)-2] != test.wantSource || args[len(args)-1] != test.wantDestination {
+		if args[0] != "-s" || !strings.Contains(strings.Join(args, " "), "Compression=no -o ControlMaster=no -o ControlPath=none -l 3600 --") || args[len(args)-2] != test.wantSource || args[len(args)-1] != test.wantDestination {
 			t.Fatalf("%s args = %q", test.command, args)
 		}
 	}
-	if _, err := copyArguments("send", "", local, remote); err == nil {
+	if _, err := copyArguments("send", "", local, remote, 0); err == nil {
 		t.Fatal("accepted a missing SSH alias")
 	}
-	if _, err := copyArguments("get", "mini-bulk", remote, " "); err == nil {
+	if _, err := copyArguments("get", "mini-bulk", remote, " ", 0); err == nil {
 		t.Fatal("accepted a missing destination")
 	}
 }
