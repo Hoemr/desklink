@@ -18,6 +18,7 @@ WORK = Path(sys.argv[1])
 REPORT = WORK / "reports"
 PACKAGE = "com.carriez.flutter_hbb"
 PASSWORD = "DesklinkFixture2026"
+FIXTURE_ID = "42420042"
 
 
 def adb(*args):
@@ -88,6 +89,25 @@ def tcp_ready():
         return conn.recv(64)
 
 
+def android_server_profile(profile):
+    # The Google APIs emulator permits adb root. Seed its isolated app data
+    # with the same fields that the stock RustDesk settings UI writes.
+    print(adb("root").decode(), flush=True)
+    adb("wait-for-device")
+    adb("shell", "am", "start", "-W", "-n", f"{PACKAGE}/.MainActivity")
+    folder = f"/data/user/0/{PACKAGE}/app_flutter"
+    owner = wait_for(lambda: adb("shell", "stat", "-c", "%u:%g", folder).decode().strip(), "Android app documents")
+    adb("shell", "am", "force-stop", PACKAGE)
+    local = WORK / "android-server.toml"
+    local.write_text(f'[options]\ncustom-rendezvous-server = "{profile["host"]}"\nkey = "{profile["key"]}"\n', encoding="utf-8")
+    stage = "/data/local/tmp/desklink-android-server.toml"
+    destination = folder + "/RustDesk2.toml"
+    adb("push", str(local), stage)
+    adb("shell", "cp", stage, destination)
+    adb("shell", "chown", owner, destination)
+    adb("shell", "restorecon", destination)
+
+
 def keyboard_visible():
     state = adb("shell", "dumpsys", "input_method")
     (REPORT / "input-method.txt").write_bytes(state)
@@ -117,35 +137,56 @@ def fixture(log):
 
 
 def main():
-    host = "10.0.2.2:21118"
+    relay = os.environ.get("DESKLINK_TEST_ROUTE") == "relay"
+    target = FIXTURE_ID if relay else "10.0.2.2:21118"
     config = WORK / "desklink.json"
-    config.write_text(json.dumps({"devices": [{"name": "fixture", "id": host}]}), encoding="utf-8")
+    devices = {"devices": [{"name": "fixture", "id": target}]}
     os.environ["XDG_CONFIG_HOME"] = str((WORK / "fixture-config").resolve())
     rustdesk_config = Path(os.environ["XDG_CONFIG_HOME"]) / "rustdesk"
     rustdesk_config.mkdir(parents=True, exist_ok=True)
-    (rustdesk_config / "RustDesk.toml").write_text(f'password = "{PASSWORD}"\n', encoding="utf-8")
-    (rustdesk_config / "RustDesk2.toml").write_text(
-        '[options]\ndirect-server = "Y"\napprove-mode = "password"\n'
-        'verification-method = "use-permanent-password"\ncustom-rendezvous-server = "127.0.0.1:29997"\n'
-        'enable-audio = "N"\nenable-lan-discovery = "N"\n', encoding="utf-8"
-    )
 
     with ExitStack() as stack:
-        def start(name, *args):
+        def start(name, *args, cwd=None, env=None):
             log = stack.enter_context((REPORT / f"{name}.log").open("wb"))
-            child = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
+            child = subprocess.Popen(args, cwd=cwd, env=env, stdout=log, stderr=subprocess.STDOUT)
             stack.callback(child.terminate)
+
+        host_options = {'direct-server': 'Y', 'custom-rendezvous-server': '127.0.0.1:29997'}
+        host_identity = f'password = "{PASSWORD}"\n'
+        if relay:
+            server = WORK / "amd64"
+            state = WORK / "relay-state"
+            state.mkdir()
+            start("hbbs", str(server / "hbbs"), "-r", "10.0.2.2:21117", "-k", "_", cwd=state,
+                  env={**os.environ, "ALWAYS_USE_RELAY": "Y"})
+            key = wait_for(lambda: (state / "id_ed25519.pub").read_text().strip(), "self-hosted server public key")
+            start("hbbr", str(server / "hbbr"), "-k", "_", cwd=state)
+            devices.update(id_server="10.0.2.2:21116", server_key=key)
+            host_options = {'direct-server': 'N', 'custom-rendezvous-server': '127.0.0.1:21116',
+                            'relay-server': '127.0.0.1:21117', 'key': key}
+            host_identity += f'id = "{FIXTURE_ID}"\n'
+
+        config.write_text(json.dumps(devices), encoding="utf-8")
+        host_options.update({'approve-mode': 'password', 'verification-method': 'use-permanent-password',
+                             'enable-audio': 'N', 'enable-lan-discovery': 'N'})
+        (rustdesk_config / "RustDesk.toml").write_text(host_identity, encoding="utf-8")
+        (rustdesk_config / "RustDesk2.toml").write_text(
+            '[options]\n' + ''.join(f'{name} = "{value}"\n' for name, value in host_options.items()), encoding="utf-8"
+        )
 
         os.environ.update(DISPLAY=":137", XDG_SESSION_TYPE="x11", RUSTDESK_FORCED_DISPLAY_SERVER="x11")
         start("xvfb", "Xvfb", ":137", "-screen", "0", "800x600x24", "-nolisten", "tcp")
         wait_for(lambda: not subprocess.run(["xdpyinfo"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode, "Xvfb")
         start("fixture", sys.executable, __file__, str(WORK), "host")
         start("rustdesk", "dbus-run-session", "--", "/usr/bin/rustdesk", "--server")
-        wait_for(tcp_ready, "RustDesk direct IP listener")
+        if relay:
+            wait_for(lambda: f"update_pk {FIXTURE_ID} " in (REPORT / "hbbs.log").read_text(), "fixture registration with hbbs")
+        else:
+            wait_for(tcp_ready, "RustDesk direct IP listener")
         start("panel", str(WORK / "desklink"), "-config", str(config), "panel")
         html = wait_for(lambda: urllib.request.urlopen("http://127.0.0.1:22180/", timeout=2).read(), "Desklink panel")
         href = re.search(rb'href="(rustdesk://connection/new/[^"]+)"', html).group(1).decode()
-        assert href == f"rustdesk://connection/new/{host}", href
+        assert href == f"rustdesk://connection/new/{target}", href
 
         adb("install", "-g", str(WORK / "rustdesk.apk"))
         adb("shell", "settings", "put", "global", "hide_error_dialogs", "1")
@@ -153,6 +194,9 @@ def main():
         adb("shell", "wm", "density", "160")
         adb("shell", "settings", "put", "system", "accelerometer_rotation", "0")
         adb("shell", "settings", "put", "system", "user_rotation", "0")
+        if relay:
+            profile = json.loads(subprocess.check_output([str(WORK / "desklink"), "-config", str(config), "profile"]))
+            android_server_profile(profile)
         print(adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", href, "-p", PACKAGE).decode(), flush=True)
 
         password = wait_for(password_field, "RustDesk password field")
@@ -163,6 +207,9 @@ def main():
         tap_node(accept)
         wait_for(remote_frame, "coloured remote desktop frame", 35)
         print("PASS Android receives a live X11 desktop from the Desklink link", flush=True)
+        if relay:
+            wait_for(lambda: "got paired" in (REPORT / "hbbr.log").read_text(), "hbbr pairing both RustDesk peers")
+            print("PASS self-hosted hbbs registers the host and hbbr relays its desktop", flush=True)
 
         # These controls are unlabeled in the RustDesk 1.5.3 accessibility tree.
         # Use their verified positions on the pinned 480x960, 160 dpi viewport.

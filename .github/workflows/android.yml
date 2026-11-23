@@ -19,6 +19,12 @@ jobs:
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 16
+    strategy:
+      fail-fast: false
+      matrix:
+        route: [direct, relay]
+    env:
+      DESKLINK_TEST_ROUTE: ${{ matrix.route }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -38,6 +44,11 @@ jobs:
           printf '%s\n' \
             '81096d2f65fd43352540c351bca15bb0712a2a6f9efa4c95e9fff25cb97b3b81  rustdesk.deb' \
             '772bc1b3662952f4e5b994d7a50f840fbf3bc0803d4a97a5945fa9390706e9c7  rustdesk.apk' | sha256sum -c
+          if [ "$DESKLINK_TEST_ROUTE" = relay ]; then
+            curl -fsSL --retry 2 https://github.com/rustdesk/rustdesk-server/releases/download/1.1.16/rustdesk-server-linux-amd64.zip -o server.zip
+            printf '%s\n' '0565c41affe6c3f409b0bddfaf5a24ccbf3f64f5f8e3fec250b69a0d5f6bdbcf  server.zip' | sha256sum -c
+            unzip -q server.zip
+          fi
           sudo apt-get update -qq
           sudo apt-get install -qy --no-install-recommends ./rustdesk.deb xvfb x11-utils python3-tk python3-pil dbus-x11 libayatana-appindicator3-1
           sudo systemctl stop rustdesk.service
@@ -55,7 +66,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
-          name: android-smoke-evidence
+          name: android-${{ matrix.route }}-evidence
           path: ${{ runner.temp }}/desklink-android/reports/
           retention-days: 5
           if-no-files-found: ignore
