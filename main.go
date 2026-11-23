@@ -51,8 +51,16 @@ type device struct {
 	ID           string `json:"id"`
 	Address      string `json:"address"`
 	SSH          string `json:"ssh"`
+	SSHTunnel    string `json:"ssh_tunnel"`
 	SSHUser      string `json:"ssh_user"`
 	SSHLocalPort uint16 `json:"ssh_local_port"`
+}
+
+func (d device) tunnelAlias() string {
+	if d.SSHTunnel != "" {
+		return d.SSHTunnel
+	}
+	return d.SSH
 }
 
 func (d device) Target() string {
@@ -120,11 +128,14 @@ func loadConfig(path string) (config, error) {
 		if dev.SSH != "" && !sshPattern.MatchString(dev.SSH) {
 			return cfg, fmt.Errorf("invalid SSH alias for %q", dev.Name)
 		}
+		if dev.SSHTunnel != "" && !sshPattern.MatchString(dev.SSHTunnel) {
+			return cfg, fmt.Errorf("invalid ssh_tunnel alias for %q", dev.Name)
+		}
 		if dev.SSHUser != "" && (!sshPattern.MatchString(dev.SSHUser) || dev.Address == "") {
 			return cfg, fmt.Errorf("ssh_user for %q requires a valid username and an address", dev.Name)
 		}
 		if dev.SSHLocalPort != 0 {
-			if dev.Address == "" || dev.SSH == "" {
+			if dev.Address == "" || dev.tunnelAlias() == "" {
 				return cfg, fmt.Errorf("SSH tunnel for %q requires an SSH alias and an address", dev.Name)
 			}
 			if other, used := localPorts[dev.SSHLocalPort]; used {
@@ -232,6 +243,9 @@ func run(args []string) error {
 			if dev.ID != "" && dev.Address != "" {
 				fmt.Printf("\tAddress=%s", dev.Address)
 			}
+			if dev.SSHTunnel != "" && dev.SSHTunnel != dev.SSH {
+				fmt.Printf("\tTunnelSSH=%s", dev.SSHTunnel)
+			}
 			fmt.Println()
 		}
 		return nil
@@ -262,7 +276,7 @@ func connect(command string, dev device, args []string, viaSSH bool, profile ser
 		}
 		local := fmt.Sprintf("127.0.0.1:%d", dev.SSHLocalPort)
 		if command == "tunnel" {
-			return interactive(exec.Command("ssh", "-NT", "-S", "none", "-o", "ExitOnForwardFailure=yes", "-L", local+":"+dev.Address, dev.SSH))
+			return interactive(exec.Command("ssh", "-NT", "-S", "none", "-o", "ExitOnForwardFailure=yes", "-L", local+":"+dev.Address, dev.tunnelAlias()))
 		}
 		conn, err := net.Dial("tcp", local)
 		if err != nil {

@@ -47,6 +47,25 @@ func TestDeviceRoutes(t *testing.T) {
 	}
 }
 
+func TestTunnelUsesItsOwnSSHAlias(t *testing.T) {
+	dev := device{SSH: "mini", SSHTunnel: "mini-tunnel"}
+	if got := dev.tunnelAlias(); got != "mini-tunnel" {
+		t.Fatalf("tunnel alias = %q", got)
+	}
+	dev.SSHTunnel = ""
+	if got := dev.tunnelAlias(); got != "mini" {
+		t.Fatalf("legacy tunnel alias = %q", got)
+	}
+	path := filepath.Join(t.TempDir(), "desklink.json")
+	data := `{"devices":[{"name":"mini","address":"100.64.0.2:21118","ssh_tunnel":"-not-an-alias","ssh_local_port":22118}]}`
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadConfig(path); err == nil || !strings.Contains(err.Error(), "invalid ssh_tunnel") {
+		t.Fatalf("invalid tunnel alias error = %v", err)
+	}
+}
+
 func TestPanelShowsBothRoutesAndImportProfile(t *testing.T) {
 	cfg := config{
 		IDServer: " relay.example.com ", ServerKey: " public-key ",

@@ -69,6 +69,8 @@ Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → �
 2. 在另一个终端中运行 `desklink -via-ssh desktop mini`。`files` 和 `terminal` 也支持 `-via-ssh`，可以共用这条隧道。
 3. 在隧道窗口按 `Ctrl+C` 停止转发。
 
+桌面串流或大文件传输和终端一起使用时，可用 `ssh_tunnel` 指定独立的 SSH 别名。终端仍走 `ssh`。若使用跳板，在这个隧道别名和它的 `ProxyJump` 别名上分别设置 `ControlMaster no` 和 `ControlPath none`，使数据流与交互终端分开。大文件也可通过独立别名传输。
+
 手机可继续用同一台被控机的 Tailscale 地址。 [OpenSSH 本地端口转发](https://man.openbsd.org/ssh#L) · [RustDesk IP 直连](https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/#direct-server)
 
 ## 手机

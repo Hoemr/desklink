@@ -65,6 +65,10 @@ func serve(listener net.Listener, config *ssh.ServerConfig, forward string, jump
 					}
 					go session(channel)
 				case "direct-tcpip":
+					if jumpCount == nil && client.User() != "fixture-tunnel" {
+						channel.Reject(ssh.Prohibited, "desktop forwarding requires the separate SSH alias")
+						continue
+					}
 					go forwardChannel(channel, forward, jumpCount)
 				default:
 					channel.Reject(ssh.UnknownChannelType, "fixture channel unavailable")
@@ -152,7 +156,7 @@ func main() {
 	check(err)
 	hostSigner := must(ssh.NewSignerFromKey(hostKey))
 	serverConfig := &ssh.ServerConfig{PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-		if conn.User() != "fixture" || !bytes.Equal(key.Marshal(), clientSigner.PublicKey().Marshal()) {
+		if (conn.User() != "fixture" && conn.User() != "fixture-tunnel") || !bytes.Equal(key.Marshal(), clientSigner.PublicKey().Marshal()) {
 			return nil, errors.New("unexpected fixture login")
 		}
 		return nil, nil
@@ -184,7 +188,9 @@ func main() {
 	_, err = fmt.Fprintf(sshConfig, `Host desklink-jump
   HostName 127.0.0.1
   Port %d
-Host desklink-target
+Host desklink-tunnel-target
+  User fixture-tunnel
+Host desklink-target desklink-tunnel-target
   HostName 127.0.0.1
   Port %d
   ProxyJump desklink-jump
@@ -205,7 +211,8 @@ Host *
 	localAddr, localPort := local.Addr().String(), local.Addr().(*net.TCPAddr).Port
 	local.Close()
 	config := map[string]any{"devices": []map[string]any{{
-		"name": "smoke", "id": "123456789", "address": backend.Addr().String(), "ssh": "desklink-target", "ssh_local_port": localPort,
+		"name": "smoke", "id": "123456789", "address": backend.Addr().String(), "ssh": "desklink-target",
+		"ssh_tunnel": "desklink-tunnel-target", "ssh_local_port": localPort,
 	}}}
 	appConfig := filepath.Join(work, "desklink.json")
 	check(os.WriteFile(appConfig, must(json.Marshal(config)), 0600))

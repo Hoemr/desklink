@@ -33,7 +33,12 @@ $event = [Threading.EventWaitHandle]::OpenExisting($Signal)
 $event.Dispose()
 '@ | Set-Content -LiteralPath $handler -Encoding UTF8
     @{
-        devices = @(@{ name = 'smoke'; id = '127.0.0.1:21118' })
+        id_server = 'relay.example.com:21116'
+        server_key = 'ab+C/de='
+        devices = @(
+            @{ name = 'smoke'; id = '127.0.0.1:21118' },
+            @{ name = 'scoped'; id = '123456789' }
+        )
     } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $config -Encoding UTF8
 
     $key = $registry.CreateSubKey($scheme)
@@ -58,17 +63,23 @@ $event.Dispose()
         files = 'file-transfer/'
         terminal = 'terminal/'
     }
-    foreach ($mode in $modes.Keys) {
-        & $exe -config $config $mode smoke
-        if (!$received.WaitOne(15000)) {
-            throw "Windows did not invoke the RustDesk protocol handler for $mode"
+    $targets = [ordered]@{
+        smoke = '127.0.0.1:21118'
+        scoped = '123456789@relay.example.com:21116?key=ab%2BC%2Fde%3D'
+    }
+    foreach ($target in $targets.Keys) {
+        foreach ($mode in $modes.Keys) {
+            & $exe -config $config $mode $target
+            if (!$received.WaitOne(15000)) {
+                throw "Windows did not invoke the RustDesk handler for $mode $target"
+            }
+            $expected = "rustdesk://$($modes[$mode])$($targets[$target])"
+            $actual = Get-Content -LiteralPath $record -Raw
+            if ($actual -cne $expected) {
+                throw "Expected $expected, received $actual"
+            }
+            Write-Output "PASS $mode $actual"
         }
-        $expected = "rustdesk://$($modes[$mode])127.0.0.1:21118"
-        $actual = Get-Content -LiteralPath $record -Raw
-        if ($actual -cne $expected) {
-            throw "Expected $expected, received $actual"
-        }
-        Write-Output "PASS $mode $actual"
     }
 } finally {
     $received.Dispose()
