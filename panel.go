@@ -18,8 +18,8 @@ import (
 var panelHTML string
 
 var devicePanel = template.Must(template.New("panel").Funcs(template.FuncMap{
-	"remote": func(command, target string) template.URL {
-		return template.URL(rustDeskURL(rustDeskPaths[command], target))
+	"remote": func(command, target string, profile serverProfile) template.URL {
+		return template.URL(rustDeskURL(rustDeskPaths[command], target, profile))
 	},
 	"sshAddress": func(dev device) string {
 		address, _ := netip.ParseAddrPort(dev.Address)
@@ -31,9 +31,10 @@ func renderPanel(w io.Writer, cfg config) error {
 	view := struct {
 		Devices []device
 		Profile string
-	}{Devices: cfg.Devices}
-	if profile := cfg.profile(); profile.Host != "" && profile.Key != "" {
-		data, err := json.Marshal(profile)
+		Server  serverProfile
+	}{Devices: cfg.Devices, Server: cfg.profile()}
+	if view.Server.Host != "" && view.Server.Key != "" {
+		data, err := json.Marshal(view.Server)
 		if err != nil {
 			return err
 		}

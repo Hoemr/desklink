@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"html"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,7 +58,7 @@ func TestPanelShowsBothRoutesAndImportProfile(t *testing.T) {
 	}
 	page := html.UnescapeString(buf.String())
 	for _, want := range []string{
-		`class="primary" href="rustdesk://connection/new/123456789"`,
+		`class="primary" href="rustdesk://connection/new/123456789@relay.example.com?key=public-key"`,
 		`class="ip-link" href="rustdesk://connection/new/100.64.0.2:21118"`,
 		`user@100.64.0.2`,
 		`{"host":"relay.example.com","key":"public-key"}`,
@@ -65,5 +66,23 @@ func TestPanelShowsBothRoutesAndImportProfile(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("missing %q in panel", want)
 		}
+	}
+}
+
+func TestRustDeskLinksPinTheServerForIDs(t *testing.T) {
+	profile := serverProfile{Host: "relay.example.com:21116", Key: "ab+C/de="}
+	link := rustDeskURL("connection/new/", "123456789", profile)
+	u, err := url.Parse(link)
+	if err != nil || u.Path != "/new/123456789@relay.example.com:21116" || u.Query().Get("key") != profile.Key {
+		t.Fatalf("invalid scoped link %q: %v", link, err)
+	}
+	for _, target := range []string{"127.0.0.1:22118", "100.64.0.2:21118"} {
+		if got := rustDeskURL("connection/new/", target, profile); got != "rustdesk://connection/new/"+target {
+			t.Errorf("direct link changed: %s", got)
+		}
+	}
+	profile.Host = "relay.example.com'@other"
+	if got := rustDeskURL("terminal/", "123456789", profile); got != "rustdesk://terminal/123456789" {
+		t.Errorf("unsafe server appeared in link: %s", got)
 	}
 }

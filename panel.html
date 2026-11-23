@@ -45,15 +45,15 @@
       <h2>{{.Name}}</h2>
       {{if .Target}}
       <nav aria-label="{{.Name}} 的 RustDesk 会话">
-        <a class="primary" href="{{remote "desktop" .Target}}">远程桌面</a>
-        <a href="{{remote "files" .Target}}">文件传输</a>
-        <a href="{{remote "terminal" .Target}}">远程终端</a>
+        <a class="primary" href="{{remote "desktop" .Target $.Server}}">远程桌面</a>
+        <a href="{{remote "files" .Target $.Server}}">文件传输</a>
+        <a href="{{remote "terminal" .Target $.Server}}">远程终端</a>
       </nav>
       {{end}}
       {{if or .Target .SSH .SSHUser}}
       <dl>
         {{if .ID}}<dt>设备 ID</dt><dd><code>{{.ID}}</code></dd>{{end}}
-        {{if and .ID .Address}}<dt>IP 直连</dt><dd><a class="ip-link" href="{{remote "desktop" .Address}}">{{.Address}}</a></dd>{{end}}
+        {{if and .ID .Address}}<dt>IP 直连</dt><dd><a class="ip-link" href="{{remote "desktop" .Address $.Server}}">{{.Address}}</a></dd>{{end}}
         {{if and (not .ID) .Address}}<dt>RustDesk</dt><dd><code>{{.Address}}</code></dd>{{end}}
         {{if .SSHUser}}<dt>手机 SSH</dt><dd><code>{{sshAddress .}}</code></dd>{{end}}
         {{if .SSH}}<dt>桌面 SSH</dt><dd><code>ssh {{.SSH}}</code></dd>{{end}}

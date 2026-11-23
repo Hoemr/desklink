@@ -8,11 +8,13 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +38,7 @@ Default config: desklink.json beside the executable.`
 var (
 	namePattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 	sshPattern    = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,63}$`)
+	serverPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$`)
 	rustDeskPaths = map[string]string{
 		"desktop":  "connection/new/",
 		"terminal": "terminal/",
@@ -146,8 +149,25 @@ func launch(uri string) error {
 	return interactive(cmd)
 }
 
-func rustDeskURL(path, target string) string {
-	return "rustdesk://" + path + target
+func rustDeskURL(path, target string, profile serverProfile) string {
+	prefix := "rustdesk://" + path
+	if namePattern.MatchString(target) && profile.Key != "" && validServerAddress(profile.Host) {
+		return prefix + url.PathEscape(target+"@"+profile.Host) + "?key=" + url.QueryEscape(profile.Key)
+	}
+	return prefix + target
+}
+
+func validServerAddress(value string) bool {
+	if serverPattern.MatchString(value) {
+		return true
+	}
+	host, port, err := net.SplitHostPort(value)
+	number, portErr := strconv.ParseUint(port, 10, 16)
+	if err != nil || portErr != nil || number == 0 {
+		return false
+	}
+	addr, addrErr := netip.ParseAddr(host)
+	return serverPattern.MatchString(host) || (addrErr == nil && addr.Is6() && addr.Zone() == "")
 }
 
 func interactive(cmd *exec.Cmd) error {
@@ -228,13 +248,13 @@ func run(args []string) error {
 	}
 	for _, dev := range cfg.Devices {
 		if dev.Name == args[1] {
-			return connect(command, dev, args[2:], *viaSSH)
+			return connect(command, dev, args[2:], *viaSSH, cfg.profile())
 		}
 	}
 	return fmt.Errorf("unknown device %q (see desklink list)", args[1])
 }
 
-func connect(command string, dev device, args []string, viaSSH bool) error {
+func connect(command string, dev device, args []string, viaSSH bool, profile serverProfile) error {
 	target := dev.Target()
 	if viaSSH || command == "tunnel" {
 		if dev.SSHLocalPort == 0 {
@@ -255,7 +275,7 @@ func connect(command string, dev device, args []string, viaSSH bool) error {
 		if target == "" {
 			return fmt.Errorf("no RustDesk ID configured for %q", dev.Name)
 		}
-		return launch(rustDeskURL(path, target))
+		return launch(rustDeskURL(path, target, profile))
 	}
 	if dev.SSH == "" {
 		return fmt.Errorf("no SSH alias configured for %q", dev.Name)

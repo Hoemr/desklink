@@ -38,7 +38,7 @@ flowchart LR
 
 ## 使用已有 Tailscale
 
-Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → 安全中开启「IP 直连」并将来源 IP 白名单设为你的 Tailscale 设备地址。将被控机的 Tailscale `IPv4:21118` 填到 `address`。若同时填写 `id`，面板主按钮会通过 RustDesk 设备 ID 建连，旁边的「IP 直连」链接使用这个地址。旧配置中的 `id: "IPv4:port"` 仍可使用。此模式由 Tailscale 提供链路加密，`tailscale ping` 可查看底层是点对点还是 DERP。 [RustDesk IP 直连](https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/#direct-server) · [Tailscale 连接类型](https://tailscale.com/docs/reference/connection-types)
+Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → 安全中开启「IP 直连」并将来源 IP 白名单设为你的 Tailscale 设备地址。将被控机的 Tailscale `IPv4:21118` 填到 `address`。若同时填写 `id`，面板主按钮会通过 RustDesk 设备 ID 建连，旁边的「IP 直连」链接使用这个地址。填写自托管服务器和公钥后，设备 ID 链接会带上这两项连接配置。旧配置中的 `id: "IPv4:port"` 仍可使用。IP 直连模式由 Tailscale 提供链路加密，`tailscale ping` 可查看底层是点对点还是 DERP。 [RustDesk IP 直连](https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/#direct-server) · [Tailscale 连接类型](https://tailscale.com/docs/reference/connection-types)
 
 ## Mac / Windows 命令行
 

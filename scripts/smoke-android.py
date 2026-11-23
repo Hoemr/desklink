@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from urllib.parse import parse_qs, urlsplit
 import xml.etree.ElementTree as ET
 from contextlib import ExitStack, suppress
 from pathlib import Path
@@ -87,28 +88,6 @@ def remote_frame():
 def tcp_ready():
     with socket.create_connection(("127.0.0.1", 21118), timeout=2) as conn:
         return conn.recv(64)
-
-
-def android_server_profile(profile):
-    # The Google APIs emulator permits adb root. Seed its isolated app data
-    # with the same fields that the stock RustDesk settings UI writes.
-    print(adb("root").decode(), flush=True)
-    adb("wait-for-device")
-    adb("reverse", "tcp:21115", "tcp:21115")
-    adb("reverse", "tcp:21116", "tcp:21116")
-    adb("reverse", "tcp:21117", "tcp:22117")
-    adb("shell", "am", "start", "-W", "-n", f"{PACKAGE}/.MainActivity")
-    folder = f"/data/user/0/{PACKAGE}/app_flutter"
-    owner = wait_for(lambda: adb("shell", "stat", "-c", "%u:%g", folder).decode().strip(), "Android app documents")
-    adb("shell", "am", "force-stop", PACKAGE)
-    local = WORK / "android-server.toml"
-    local.write_text(f'[options]\ncustom-rendezvous-server = "{profile["host"]}"\nkey = "{profile["key"]}"\n', encoding="utf-8")
-    stage = "/data/local/tmp/desklink-android-server.toml"
-    destination = folder + "/RustDesk2.toml"
-    adb("push", str(local), stage)
-    adb("shell", "cp", stage, destination)
-    adb("shell", "chown", owner, destination)
-    adb("shell", "restorecon", destination)
 
 
 def keyboard_visible():
@@ -195,7 +174,13 @@ def main():
         start("panel", str(WORK / "desklink"), "-config", str(config), "panel")
         html = wait_for(lambda: urllib.request.urlopen("http://127.0.0.1:22180/", timeout=2).read(), "Desklink panel")
         href = re.search(rb'href="(rustdesk://connection/new/[^"]+)"', html).group(1).decode()
-        assert href == f"rustdesk://connection/new/{target}", href
+        if relay:
+            profile = json.loads(subprocess.check_output([str(WORK / "desklink"), "-config", str(config), "profile"]))
+            link = urlsplit(href)
+            assert link.path == f'/new/{target}@{profile["host"]}'
+            assert parse_qs(link.query) == {"key": [profile["key"]]}
+        else:
+            assert href == f"rustdesk://connection/new/{target}", href
 
         adb("install", "-g", str(WORK / "rustdesk.apk"))
         adb("shell", "settings", "put", "global", "hide_error_dialogs", "1")
@@ -205,8 +190,9 @@ def main():
         adb("shell", "settings", "put", "system", "accelerometer_rotation", "0")
         adb("shell", "settings", "put", "system", "user_rotation", "0")
         if relay:
-            profile = json.loads(subprocess.check_output([str(WORK / "desklink"), "-config", str(config), "profile"]))
-            android_server_profile(profile)
+            adb("reverse", "tcp:21115", "tcp:21115")
+            adb("reverse", "tcp:21116", "tcp:21116")
+            adb("reverse", "tcp:21117", "tcp:22117")
         else:
             adb("reverse", "tcp:21118", "tcp:21118")
         print(adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", href, "-p", PACKAGE).decode(), flush=True)
