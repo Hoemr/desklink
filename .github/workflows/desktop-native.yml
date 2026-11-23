@@ -1,0 +1,233 @@
+name: Graphical desktop builds
+
+'on':
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUSTDESK_COMMIT: 95cca3f661f635b3cc85c04935fe8d96d8f432ef
+
+jobs:
+  bridge:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        flutter: ['3.24.5', '3.44.9']
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ env.RUSTDESK_COMMIT }}
+          path: upstream
+          submodules: recursive
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ matrix.flutter }}
+      - name: Apply upstream Flutter 3.44 patches
+        if: matrix.flutter == '3.44.9'
+        working-directory: upstream
+        run: bash .github/patches/apply_flutter_3.44_source_patches.sh
+      - name: Generate the desktop Flutter bridge
+        working-directory: upstream
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qy --no-install-recommends clang cmake libclang-dev libgtk-3-dev llvm-dev nasm ninja-build pkg-config
+          rustup toolchain install 1.75 --profile minimal --component rustfmt
+          cargo +1.75 install cargo-expand --version 1.0.95 --locked
+          cargo +1.75 install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
+          (cd flutter && flutter pub get)
+          RUSTUP_TOOLCHAIN=1.75 "$HOME/.cargo/bin/flutter_rust_bridge_codegen" --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart --c-output ./flutter/macos/Runner/bridge_generated.h
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desktop-bridge-${{ matrix.flutter }}
+          path: |
+            upstream/flutter/lib/generated_bridge*.dart
+            upstream/flutter/macos/Runner/bridge_generated.h
+          if-no-files-found: error
+
+  macos:
+    needs: bridge
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+            flutter: '3.44.9'
+            asset: aarch64
+            sha256: e6d30fa1633d772c48935907c208ca4e555a856fb2038af3aaa87a327c29360b
+          - runner: macos-15-intel
+            architecture: x86_64
+            flutter: '3.24.5'
+            asset: x86_64
+            sha256: 74d06e6b2e273a128e8d36313e30d47db2063f453a4235ed4d9e5cdfdf9be538
+    env:
+      ARCHITECTURE: ${{ matrix.architecture }}
+      FLUTTER_VERSION: ${{ matrix.flutter }}
+      ENGINE_ASSET: ${{ matrix.asset }}
+      ENGINE_SHA256: ${{ matrix.sha256 }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ env.RUSTDESK_COMMIT }}
+          path: upstream
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ matrix.flutter }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: desktop-bridge-${{ matrix.flutter }}
+          path: upstream/flutter
+      - name: Prepare the Mac app and verified engine
+        run: |
+          test "$(uname -m)" = "$ARCHITECTURE"
+          node native/prepare.cjs upstream
+          if [ "$FLUTTER_VERSION" = '3.44.9' ]; then
+            brew install gnu-sed
+            (cd upstream && PATH="$(brew --prefix gnu-sed)/libexec/gnubin:$PATH" bash .github/patches/apply_flutter_3.44_source_patches.sh)
+            flutter config --no-enable-swift-package-manager
+          else
+            git -C "$FLUTTER_ROOT" apply "$PWD/upstream/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+          fi
+          curl -fsSL "https://github.com/rustdesk/rustdesk/releases/download/1.5.3/rustdesk-1.5.3-$ENGINE_ASSET.dmg" -o upstream-engine.dmg
+          printf '%s  %s\n' "$ENGINE_SHA256" upstream-engine.dmg | shasum -a 256 -c
+          mount="$RUNNER_TEMP/desklink-rustdesk-engine"
+          mkdir -p "$mount" upstream/target/release
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" upstream-engine.dmg
+          cp "$mount/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib" upstream/target/release/
+          hdiutil detach "$mount"
+          lipo -verify_arch "$ARCHITECTURE" upstream/target/release/liblibrustdesk.dylib
+          node -e 'const fs=require("node:fs"); for (const name of ["Runner.xcodeproj/project.pbxproj","Runner/Configs/AppInfo.xcconfig","Podfile"]) { const p="upstream/flutter/macos/"+name; fs.writeFileSync(p,fs.readFileSync(p,"utf8").replaceAll("com.carriez.rustdesk","com.hoemr.desklink").replaceAll("com.carriez.flutterHbb","com.hoemr.desklink").replace(/MACOSX_DEPLOYMENT_TARGET = [\d.]+;/g,"MACOSX_DEPLOYMENT_TARGET = 12.3;").replace("platform :osx, \x2710.14\x27","platform :osx, \x2712.3\x27")); }'
+      - name: Build and check the graphical Mac package
+        working-directory: upstream/flutter
+        run: |
+          FLUTTER_XCODE_ARCHS="$ARCHITECTURE" FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES flutter build macos --release
+          app="$RUNNER_TEMP/Desklink.app"
+          ditto build/macos/Build/Products/Release/RustDesk.app "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = 'com.hoemr.desklink'
+          codesign --verify --deep --strict "$app"
+          test "$(lipo -archs "$app/Contents/MacOS/RustDesk")" = "$ARCHITECTURE"
+          "$app/Contents/MacOS/RustDesk" --version
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$GITHUB_WORKSPACE/desklink-graphical-macos-$ARCHITECTURE.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desklink-graphical-macos-${{ matrix.architecture }}
+          path: desklink-graphical-macos-${{ matrix.architecture }}.zip
+          if-no-files-found: error
+
+  windows:
+    needs: bridge
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            architecture: x64
+            flutter: '3.24.5'
+            asset: x86_64
+            sha256: 27f6bfb48a93d524860dd7f4a79e349be14b6dc71295746cf132a060ba4869c8
+          - runner: windows-11-arm
+            architecture: arm64
+            flutter: '3.44.9'
+            asset: aarch64
+            sha256: b41893aed2cf411d557babc3cd02b74836dd199fc152a3b63147591f52f981aa
+    env:
+      ARCHITECTURE: ${{ matrix.architecture }}
+      ENGINE_ASSET: ${{ matrix.asset }}
+      ENGINE_SHA256: ${{ matrix.sha256 }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ env.RUSTDESK_COMMIT }}
+          path: upstream
+          persist-credentials: false
+      - uses: subosito/flutter-action@2783a3f08e1baf891508463f8c6653c258246225 # v2.12.0
+        id: flutter
+        with:
+          channel: stable
+          architecture: x64
+          flutter-version: ${{ matrix.flutter }}
+      - name: Bootstrap Flutter ARM64
+        if: matrix.architecture == 'arm64'
+        env:
+          NATIVE_FLUTTER_ROOT: ${{ steps.flutter.outputs['CACHE-PATH'] }}
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Remove-Item -LiteralPath "$env:NATIVE_FLUTTER_ROOT\bin\cache\engine-dart-sdk.stamp" -ErrorAction SilentlyContinue
+          & "$env:NATIVE_FLUTTER_ROOT\bin\internal\update_dart_sdk.ps1"
+          if ((& "$env:NATIVE_FLUTTER_ROOT\bin\dart.bat" --version 2>&1 | Out-String) -notmatch 'windows_arm64') { throw 'Expected ARM64 Dart' }
+          flutter precache --windows
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: desktop-bridge-${{ matrix.flutter }}
+          path: upstream/flutter
+      - name: Apply Desklink changes
+        shell: pwsh
+        run: node native/prepare.cjs upstream
+      - name: Apply upstream Flutter 3.44 patches
+        if: matrix.architecture == 'arm64'
+        working-directory: upstream
+        shell: bash
+        run: bash .github/patches/apply_flutter_3.44_source_patches.sh
+      - name: Apply upstream Flutter 3.24 patch
+        if: matrix.architecture == 'x64'
+        env:
+          NATIVE_FLUTTER_ROOT: ${{ steps.flutter.outputs['CACHE-PATH'] }}
+        shell: pwsh
+        run: git -C $env:NATIVE_FLUTTER_ROOT apply "$PWD/upstream/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+      - name: Extract the verified Windows engine
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $msi = Join-Path $env:RUNNER_TEMP 'upstream-engine.msi'
+          $target = Join-Path $env:RUNNER_TEMP 'desklink-engine'
+          Invoke-WebRequest "https://github.com/rustdesk/rustdesk/releases/download/1.5.3/rustdesk-1.5.3-$env:ENGINE_ASSET.msi" -OutFile $msi
+          if ((Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:ENGINE_SHA256) { throw 'RustDesk MSI checksum mismatch' }
+          $extract = Start-Process msiexec.exe -ArgumentList @('/a', "`"$msi`"", "TARGETDIR=`"$target`"", '/qn') -PassThru -Wait
+          if ($extract.ExitCode -ne 0) { throw "MSI extraction failed ($($extract.ExitCode))" }
+          $engine = @(Get-ChildItem $target -Recurse -File -Filter librustdesk.dll)
+          if ($engine.Count -ne 1) { throw 'Expected one Windows engine library' }
+          New-Item -ItemType Directory -Path upstream/target/release -Force | Out-Null
+          Copy-Item $engine[0].FullName upstream/target/release/librustdesk.dll
+          $engine[0].Directory.FullName | Set-Content -LiteralPath "$env:RUNNER_TEMP/desklink-engine-dir.txt" -Encoding UTF8
+      - name: Build and check the graphical Windows package
+        working-directory: upstream/flutter
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          flutter build windows --release
+          $bundle = "build/windows/$env:ARCHITECTURE/runner/Release"
+          $engineDir = Get-Content "$env:RUNNER_TEMP/desklink-engine-dir.txt"
+          foreach ($name in @('flutter_windows.dll', 'dylib_virtual_display.dll', 'RustDeskTempTopMostWindow.exe')) {
+            $dependency = Join-Path $engineDir $name
+            if (Test-Path -LiteralPath $dependency) { Copy-Item $dependency $bundle -Force }
+          }
+          if (-not (Test-Path "$bundle/data/app.so")) { throw 'Missing compiled Flutter application' }
+          $version = (& "$bundle/rustdesk.exe" --version | Out-String).Trim()
+          if ($version -ne '1.5.3') { throw "Unexpected installed engine version: $version" }
+          Compress-Archive -Path "$bundle/*" -DestinationPath "$env:GITHUB_WORKSPACE/desklink-graphical-windows-$env:ARCHITECTURE.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desklink-graphical-windows-${{ matrix.architecture }}
+          path: desklink-graphical-windows-${{ matrix.architecture }}.zip
+          if-no-files-found: error
