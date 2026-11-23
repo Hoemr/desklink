@@ -2,15 +2,22 @@ name: Graphical desktop builds
 
 'on':
   workflow_dispatch:
+    inputs:
+      bridge_run:
+        description: Reuse the bridge artifacts of a previous run for this RustDesk version
+        type: string
+        required: false
 
 permissions:
   contents: read
+  actions: read
 
 env:
   RUSTDESK_COMMIT: 95cca3f661f635b3cc85c04935fe8d96d8f432ef
 
 jobs:
   bridge:
+    if: inputs.bridge_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     strategy:
@@ -52,6 +59,7 @@ jobs:
 
   macos:
     needs: bridge
+    if: ${{ always() && !cancelled() && (inputs.bridge_run != '' || needs.bridge.result == 'success') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     strategy:
@@ -91,6 +99,8 @@ jobs:
         with:
           name: desktop-bridge-${{ matrix.flutter }}
           path: upstream/flutter
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.bridge_run || github.run_id }}
       - name: Prepare the Mac app and verified engine
         run: |
           test "$(uname -m)" = "$ARCHITECTURE"
@@ -109,7 +119,7 @@ jobs:
           hdiutil attach -readonly -nobrowse -mountpoint "$mount" upstream-engine.dmg
           cp "$mount/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib" upstream/target/release/
           hdiutil detach "$mount"
-          lipo -verify_arch "$ARCHITECTURE" upstream/target/release/liblibrustdesk.dylib
+          lipo upstream/target/release/liblibrustdesk.dylib -verify_arch "$ARCHITECTURE"
           node -e 'const fs=require("node:fs"); for (const name of ["Runner.xcodeproj/project.pbxproj","Runner/Configs/AppInfo.xcconfig","Podfile"]) { const p="upstream/flutter/macos/"+name; fs.writeFileSync(p,fs.readFileSync(p,"utf8").replaceAll("com.carriez.rustdesk","com.hoemr.desklink").replaceAll("com.carriez.flutterHbb","com.hoemr.desklink").replace(/MACOSX_DEPLOYMENT_TARGET = [\d.]+;/g,"MACOSX_DEPLOYMENT_TARGET = 12.3;").replace("platform :osx, \x2710.14\x27","platform :osx, \x2712.3\x27")); }'
       - name: Build and check the graphical Mac package
         working-directory: upstream/flutter
@@ -130,6 +140,7 @@ jobs:
 
   windows:
     needs: bridge
+    if: ${{ always() && !cancelled() && (inputs.bridge_run != '' || needs.bridge.result == 'success') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     strategy:
@@ -181,6 +192,8 @@ jobs:
         with:
           name: desktop-bridge-${{ matrix.flutter }}
           path: upstream/flutter
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.bridge_run || github.run_id }}
       - name: Apply Desklink changes
         shell: pwsh
         run: node native/prepare.cjs upstream
