@@ -4,7 +4,7 @@
 
 ## 账号登录与设备列表
 
-1. 在常开的主机安装 Node.js 20+，进入 `account/`，运行 `npm ci --ignore-scripts`。创建 `meshcentral-data/`，将 [config.example.json](account/config.example.json) 复制为 `meshcentral-data/config.json`。将 `settings.cert` 和 `domains[""].certUrl` 改成账号入口的 HTTPS 主机名和 URL。反向代理在同一台主机运行，转发到 `127.0.0.1:24443`。
+1. 在常开的 Mac 或 Linux 主机安装 Node.js 20+，进入 `account/`，运行 `npm ci --ignore-scripts`。创建 `meshcentral-data/`，将 [config.example.json](account/config.example.json) 复制为 `meshcentral-data/config.json`。将 `settings.cert` 和 `domains[""].certUrl` 改成账号入口的 HTTPS 主机名和 URL。反向代理在同一台主机运行，转发到 `127.0.0.1:24443`。
 2. 运行 `npm start`。先从服务器的浏览器或通过 SSH 端口转发打开 `http://127.0.0.1:24443`，在对外启用反向代理之前创建首个管理员。配置关闭后续自助注册。数据目录保存账号、设备和服务器密钥，只对部署用户开放。
 3. 使用现有 Tailscale 时，在服务器执行 `tailscale serve --bg --https=443 http://127.0.0.1:24443`，把生成的 HTTPS 地址用作账号入口。反向代理就绪后重启 MeshCentral，让它读取 Agent 将看到的 TLS 证书。手机、控制端和运行 Agent 的设备均需接入同一 tailnet。 [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) · [MeshCentral 配置项](https://github.com/Ylianst/MeshCentral/blob/1.3.1/meshcentral-config-schema.json)
 4. 用同一个 Desklink 账号在各端登录。在「我的设备」创建 Agent 设备组，用该组生成的 MeshAgent 安装包登记被控 Mac 或 Windows。被控 Mac 需授权屏幕录制和辅助功能。手机从设备页打开桌面，可使用触控和会话键盘。 [MeshCentral 使用手册](https://ylianst.github.io/MeshCentral/)
