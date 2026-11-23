@@ -9,12 +9,14 @@
     "redirPort": 0,
     "mpsPort": 0,
     "tlsOffload": "127.0.0.1",
+    "lockAgentDownload": true,
     "selfUpdate": false
   },
   "domains": {
     "": {
       "title": "Desklink",
       "certUrl": "https://desklink.example.com/",
+      "allowedOrigin": ["desklink.example.com", "127.0.0.1"],
       "minify": true,
       "newAccounts": false,
       "guestDeviceSharing": false,
