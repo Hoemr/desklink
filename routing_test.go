@@ -66,6 +66,29 @@ func TestTunnelUsesItsOwnSSHAlias(t *testing.T) {
 	}
 }
 
+func TestCopyUsesIndependentSSHAndLiteralLocalPath(t *testing.T) {
+	local := filepath.Join(t.TempDir(), "large file.bin")
+	const remote = "/tmp/large file.bin"
+	for _, test := range []struct{ command, source, destination, wantSource, wantDestination string }{
+		{"send", local, remote, local, "mini-bulk:" + remote},
+		{"get", remote, local, "mini-bulk:" + remote, local},
+	} {
+		args, err := copyArguments(test.command, "mini-bulk", test.source, test.destination)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if args[0] != "-s" || !strings.Contains(strings.Join(args, " "), "Compression=no -o ControlMaster=no -o ControlPath=none --") || args[len(args)-2] != test.wantSource || args[len(args)-1] != test.wantDestination {
+			t.Fatalf("%s args = %q", test.command, args)
+		}
+	}
+	if _, err := copyArguments("send", "", local, remote); err == nil {
+		t.Fatal("accepted a missing SSH alias")
+	}
+	if _, err := copyArguments("get", "mini-bulk", remote, " "); err == nil {
+		t.Fatal("accepted a missing destination")
+	}
+}
+
 func TestPanelShowsBothRoutesAndImportProfile(t *testing.T) {
 	cfg := config{
 		IDServer: " relay.example.com ", ServerKey: " public-key ",

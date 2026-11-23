@@ -4,7 +4,7 @@
 
 ## RustDesk 原生整合版
 
-`native/` 为 RustDesk 1.5.3 的桌面和移动端连接页加入「Desklink」。应用内登录现有账号，设备卡片可打开 RustDesk 原生桌面或应用内 SSH 终端。桌面使用 RustDesk 网络设置里的自建 ID 服务器与公钥，仍由 RustDesk 设备凭据授权。SSH 使用账号服务上已保存的 SSH 凭据，桌面流量和 SSH 通过各自的连接传输。
+`native/` 为 RustDesk 1.5.3 的桌面和移动端连接页加入「Desklink」。应用内登录现有账号，设备卡片可分别打开原生桌面、SSH 终端和原生文件管理器。桌面和文件管理器使用 RustDesk 网络设置里的自建 ID 服务器与公钥，由 RustDesk 设备凭据授权。应用内 SSH 使用账号服务上已保存的 SSH 凭据。
 
 1. 获取 RustDesk 1.5.3 的源码，应用接入补丁并按上游的对应平台流程构建。 [RustDesk 构建文档](https://rustdesk.com/docs/en/dev/build/)
 
@@ -13,7 +13,7 @@
    node native/prepare.cjs rustdesk
    ```
 
-2. 在账号后台给同一个 SSH 设备的备注加一行 `RustDesk ID: 123456789`，替换为该机的 ID。这个条目在 App 里同时显示「远程桌面」和「SSH 终端」。在账号后台为该设备保存可自动登录的 SSH 凭据。
+2. 在账号后台给同一个 SSH 设备的备注加一行 `RustDesk ID: 123456789`，替换为该机的 ID。在账号后台保存可自动登录的 SSH 凭据，在 RustDesk 被控机的安全权限里开启文件传输。
 3. 在 RustDesk 的网络设置使用自建 ID 服务器及公钥。在「Desklink」输入账号入口、用户名和密码。开发者也可以用 `--dart-define=DESKLINK_ACCOUNT_URL=https://desklink.example.com/` 预填入口。浏览器版账号入口可继续用于管理设备。
 
 RustDesk 衍生客户端沿用上游 AGPL-3.0 许可。 [RustDesk 1.5.3 许可](https://github.com/rustdesk/rustdesk/blob/1.5.3/LICENCE)
@@ -100,6 +100,17 @@ Mac、Windows 和手机加入同一个 tailnet 后，可在被控端设置 → �
 3. 在隧道窗口按 `Ctrl+C` 停止转发。
 
 桌面串流或大文件传输和终端一起使用时，可用 `ssh_tunnel` 指定独立的 SSH 别名。终端仍走 `ssh`。若使用跳板，在这个隧道别名和它的 `ProxyJump` 别名上分别设置 `ControlMaster no` 和 `ControlPath none`，使数据流与交互终端分开。大文件也可通过独立别名传输。
+
+## 大文件传输
+
+Mac 和 Windows 可用系统 OpenSSH 的 SFTP 模式传文件或目录。两个命令使用配置里的 `ssh_tunnel` 别名，禁用压缩和连接复用。经 VPS 跳板时，`ssh_tunnel` 和对应跳板别名分别关闭复用，使文件传输与交互终端使用独立连接。路径中的空格用引号保护。
+
+```text
+desklink send mini "./dataset.tar" "/Users/remote/dataset.tar"
+desklink get mini "/Users/remote/dataset.tar" "./dataset-copy.tar"
+```
+
+速度取决于链路带宽。传输到已有路径时，OpenSSH 按目标路径执行覆盖，重要文件可先传到新文件名。App 的「传输文件」按钮使用 RustDesk 原生文件管理器，直连和中继受实际网络条件影响。 [OpenSSH 文件传输说明](https://man.openbsd.org/scp) · [RustDesk Android 文件传输](https://rustdesk.com/docs/en/client/android/#file-transfer-android)
 
 手机可继续用同一台被控机的 Tailscale 地址。 [OpenSSH 本地端口转发](https://man.openbsd.org/ssh#L) · [RustDesk IP 直连](https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/#direct-server)
 

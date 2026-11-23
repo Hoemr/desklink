@@ -38,14 +38,18 @@ void main() {
     );
   });
 
-  test('one account resolves the desktop ID and opens two independent SSH sessions', () async {
-    final account = await DesklinkAccount.signIn(address, 'desklink', _password);
+  test(
+      'one account resolves the desktop ID and opens two independent SSH sessions',
+      () async {
+    final account =
+        await DesklinkAccount.signIn(address, 'desklink', _password);
     addTearDown(account.close);
     final device = account.devices.single;
     expect(device.name, 'Mac mini');
     expect(device.desktopId, '123456789');
     expect(
-      () => account.openSsh(DesklinkDevice({'_id': 'node//other', 'name': 'Other'})),
+      () => account
+          .openSsh(DesklinkDevice({'_id': 'node//other', 'name': 'Other'})),
       throwsA(isA<HttpException>()),
     );
 
@@ -55,7 +59,8 @@ void main() {
       try {
         expect(await stream.moveNext(), isTrue);
         expect(jsonDecode(stream.current as String)['action'], 'sshautoauth');
-        socket.add('{"action":"sshautoauth","cols":80,"rows":24,"width":0,"height":0}');
+        socket.add(
+            '{"action":"sshautoauth","cols":80,"rows":24,"width":0,"height":0}');
         expect(await stream.moveNext(), isTrue);
         expect(stream.current, 'c');
         socket.add('~$input');
@@ -71,7 +76,8 @@ void main() {
   });
 
   test('device notes cannot override the configured RustDesk server', () {
-    final node = DesklinkDevice({..._device, 'desc': 'RustDesk ID: 123456@elsewhere.test'});
+    final node = DesklinkDevice(
+        {..._device, 'desc': 'RustDesk ID: 123456@elsewhere.test'});
     expect(node.desktopId, isNull);
   });
 }
@@ -79,9 +85,10 @@ void main() {
 Future<void> _fixture(HttpRequest request) async {
   if (request.uri.path == '/') {
     if (request.method == 'POST') {
-      final data = await request.transform(utf8.decoder).join();
+      final data = await utf8.decoder.bind(request).join();
       final credentials = Uri.splitQueryString(data);
-      if (credentials['username'] == 'desklink' && credentials['password'] == _password) {
+      if (credentials['username'] == 'desklink' &&
+          credentials['password'] == _password) {
         request.response.cookies.add(Cookie('mesh_session', 'fixture-session'));
       }
       request.response.statusCode = HttpStatus.found;
@@ -92,7 +99,8 @@ Future<void> _fixture(HttpRequest request) async {
   }
 
   final socket = await WebSocketTransformer.upgrade(request);
-  final authenticated = request.headers.value(HttpHeaders.cookieHeader) == 'mesh_session=fixture-session';
+  final authenticated = request.headers.value(HttpHeaders.cookieHeader) ==
+      'mesh_session=fixture-session';
   if (!authenticated) {
     socket.add('{"action":"close","cause":"noauth"}');
     await socket.close(WebSocketStatus.policyViolation);
@@ -102,10 +110,16 @@ Future<void> _fixture(HttpRequest request) async {
     socket.add('{"action":"userinfo"}');
     await for (final message in socket) {
       if (jsonDecode(message as String)['action'] == 'nodes') {
-        socket.add(jsonEncode({'action': 'nodes', 'nodes': {'mesh//private': [_device]}}));
+        socket.add(jsonEncode({
+          'action': 'nodes',
+          'nodes': {
+            'mesh//private': [_device]
+          }
+        }));
       }
     }
-  } else if (request.uri.path == '/sshterminalrelay.ashx' && request.uri.queryParameters['nodeid'] == 'node//mini') {
+  } else if (request.uri.path == '/sshterminalrelay.ashx' &&
+      request.uri.queryParameters['nodeid'] == 'node//mini') {
     socket.add('{"action":"sshautoauth"}');
     await for (final message in socket) {
       final text = message as String;

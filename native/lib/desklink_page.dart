@@ -8,9 +8,11 @@ import 'package:xterm/xterm.dart';
 import 'desklink_account.dart';
 
 class DesklinkPage extends StatefulWidget {
-  const DesklinkPage({super.key, required this.openDesktop});
+  const DesklinkPage(
+      {super.key, required this.openDesktop, required this.openFiles});
 
   final void Function(BuildContext context, String id) openDesktop;
+  final void Function(BuildContext context, String id) openFiles;
 
   @override
   State<DesklinkPage> createState() => _DesklinkPageState();
@@ -133,7 +135,9 @@ class _DesklinkPageState extends State<DesklinkPage> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  child: Text(_error!,
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)),
                 ),
               const SizedBox(height: 20),
               FilledButton(
@@ -162,7 +166,8 @@ class _DesklinkPageState extends State<DesklinkPage> {
                     Padding(
                       padding: const EdgeInsets.only(left: 8),
                       child: ChoiceChip(
-                        label: Text('${session.device.name} · SSH ${session.id}'),
+                        label:
+                            Text('${session.device.name} · SSH ${session.id}'),
                         selected: _tab == index + 1,
                         onSelected: (_) => setState(() => _tab = index + 1),
                       ),
@@ -179,7 +184,8 @@ class _DesklinkPageState extends State<DesklinkPage> {
                   ExcludeFocus(
                     key: ValueKey(session.id),
                     excluding: _tab != index + 1,
-                    child: _SshTerminal(account: account, device: session.device),
+                    child:
+                        _SshTerminal(account: account, device: session.device),
                   ),
               ],
             ),
@@ -207,6 +213,12 @@ class _DesklinkPageState extends State<DesklinkPage> {
                   icon: const Icon(Icons.desktop_windows_outlined),
                   label: const Text('远程桌面'),
                   onPressed: () => widget.openDesktop(context, desktopId),
+                ),
+              if (desktopId != null)
+                TextButton.icon(
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('传输文件'),
+                  onPressed: () => widget.openFiles(context, desktopId),
                 ),
               TextButton.icon(
                 icon: const Icon(Icons.terminal),
@@ -277,7 +289,8 @@ class _SshTerminalState extends State<_SshTerminal> {
     }
   }
 
-  void _send(String action) => _socket?.add(jsonEncode({'action': action, ..._size}));
+  void _send(String action) =>
+      _socket?.add(jsonEncode({'action': action, ..._size}));
 
   void _receive(dynamic data) {
     if (data is! String || data.isEmpty) return;
@@ -332,14 +345,23 @@ class _SshTerminalState extends State<_SshTerminal> {
   @override
   Widget build(BuildContext context) => Column(
         children: [
-          if (_status.isNotEmpty) Padding(padding: const EdgeInsets.all(8), child: Text(_status)),
+          if (_status.isNotEmpty)
+            Padding(padding: const EdgeInsets.all(8), child: Text(_status)),
           Expanded(child: TerminalView(_terminal)),
           if (_connected)
             Wrap(children: [
-              TextButton(onPressed: () => _terminal.keyInput(TerminalKey.escape), child: const Text('Esc')),
-              TextButton(onPressed: () => _terminal.keyInput(TerminalKey.tab), child: const Text('Tab')),
-              TextButton(onPressed: () => _terminal.keyInput(TerminalKey.c, ctrl: true), child: const Text('Ctrl+C')),
-              TextButton(onPressed: () => _terminal.keyInput(TerminalKey.b, ctrl: true), child: const Text('Ctrl+B')),
+              TextButton(
+                  onPressed: () => _terminal.keyInput(TerminalKey.escape),
+                  child: const Text('Esc')),
+              TextButton(
+                  onPressed: () => _terminal.keyInput(TerminalKey.tab),
+                  child: const Text('Tab')),
+              TextButton(
+                  onPressed: () => _terminal.onOutput?.call('\u0003'),
+                  child: const Text('Ctrl+C')),
+              TextButton(
+                  onPressed: () => _terminal.onOutput?.call('\u0002'),
+                  child: const Text('Ctrl+B')),
             ]),
         ],
       );

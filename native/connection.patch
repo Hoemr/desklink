@@ -10,7 +10,7 @@ index e552a77..021c222 100644
  import '../../common/formatter/id_formatter.dart';
  import '../../common/widgets/peer_tab_page.dart';
  import '../../common/widgets/autocomplete.dart';
-@@ -314,6 +315,19 @@ class _ConnectionPageState extends State<ConnectionPage>
+@@ -314,6 +315,21 @@ class _ConnectionPageState extends State<ConnectionPage>
                  Flexible(child: _buildRemoteIDTextField(context)),
                ],
              ).marginOnly(top: 22),
@@ -23,6 +23,8 @@ index e552a77..021c222 100644
 +                  onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
 +                    builder: (_) => DesklinkPage(
 +                      openDesktop: (context, id) => connect(context, id),
++                      openFiles: (context, id) =>
++                          connect(context, id, isFileTransfer: true),
 +                    ),
 +                  )),
 +                ),
@@ -42,7 +44,7 @@ index ff5dc82..aec8c2b 100644
  import '../../common/widgets/peer_tab_page.dart';
  import '../../common/widgets/autocomplete.dart';
  import '../../consts.dart';
-@@ -86,6 +87,19 @@ class _ConnectionPageState extends State<ConnectionPage> {
+@@ -86,6 +87,21 @@ class _ConnectionPageState extends State<ConnectionPage> {
              delegate: SliverChildListDelegate([
            if (!bind.isCustomClient() && !isIOS)
              Obx(() => _buildUpdateUI(stateGlobal.updateUrl.value)),
@@ -55,6 +57,8 @@ index ff5dc82..aec8c2b 100644
 +                onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
 +                  builder: (_) => DesklinkPage(
 +                    openDesktop: (context, id) => connect(context, id),
++                    openFiles: (context, id) =>
++                        connect(context, id, isFileTransfer: true),
 +                  ),
 +                )),
 +              ),

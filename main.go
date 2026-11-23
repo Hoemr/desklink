@@ -27,6 +27,8 @@ const usage = `Usage: desklink [-config FILE] [-via-ssh] COMMAND
   desktop DEVICE             Open a RustDesk desktop session
   terminal DEVICE            Open a RustDesk terminal session
   files DEVICE               Open RustDesk file transfer
+  send DEVICE LOCAL REMOTE   Send a file or folder over a separate SSH connection
+  get DEVICE REMOTE LOCAL    Receive a file or folder over a separate SSH connection
   tunnel DEVICE              Forward the device's RustDesk port over SSH
   ssh DEVICE [COMMAND]       Open SSH or run a remote command
   term DEVICE [SESSION]      Attach to or create a named tmux session
@@ -212,6 +214,10 @@ func run(args []string) error {
 		if len(args) != 2 {
 			return fmt.Errorf("usage: desklink %s DEVICE", command)
 		}
+	case "send", "get":
+		if len(args) != 4 {
+			return fmt.Errorf("usage: desklink %s DEVICE SOURCE DESTINATION", command)
+		}
 	case "term":
 		if len(args) < 2 || len(args) > 3 {
 			return errors.New("usage: desklink term DEVICE [SESSION]")
@@ -291,6 +297,13 @@ func connect(command string, dev device, args []string, viaSSH bool, profile ser
 		}
 		return launch(rustDeskURL(path, target, profile))
 	}
+	if command == "send" || command == "get" {
+		arguments, err := copyArguments(command, dev.tunnelAlias(), args[0], args[1])
+		if err != nil {
+			return err
+		}
+		return interactive(exec.Command("scp", arguments...))
+	}
 	if dev.SSH == "" {
 		return fmt.Errorf("no SSH alias configured for %q", dev.Name)
 	}
@@ -309,6 +322,29 @@ func connect(command string, dev device, args []string, viaSSH bool, profile ser
 	default:
 		return interactive(exec.Command("ssh", append([]string{dev.SSH}, args...)...))
 	}
+}
+
+func copyArguments(command, alias, source, destination string) ([]string, error) {
+	if alias == "" {
+		return nil, errors.New("configure an SSH alias for file transfer")
+	}
+	if strings.TrimSpace(source) == "" || strings.TrimSpace(destination) == "" {
+		return nil, errors.New("file transfer requires a source and destination path")
+	}
+	local, remote := source, destination
+	if command == "get" {
+		local, remote = destination, source
+	}
+	local, err := filepath.Abs(local)
+	if err != nil {
+		return nil, err
+	}
+	remote = alias + ":" + remote
+	arguments := []string{"-s", "-r", "-o", "Compression=no", "-o", "ControlMaster=no", "-o", "ControlPath=none", "--"}
+	if command == "get" {
+		return append(arguments, remote, local), nil
+	}
+	return append(arguments, local, remote), nil
 }
 
 func main() {
