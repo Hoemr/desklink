@@ -7,6 +7,11 @@ name: Desklink host installers
         description: Run ID of a Graphical desktop builds workflow with all four GUI artifacts
         required: true
         type: string
+      platform:
+        description: Installers to build
+        type: choice
+        default: all
+        options: [all, macos, windows]
 
 permissions:
   contents: read
@@ -14,6 +19,7 @@ permissions:
 
 jobs:
   macos:
+    if: inputs.platform != 'windows'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:
@@ -77,6 +83,7 @@ jobs:
           if-no-files-found: error
 
   windows:
+    if: inputs.platform != 'macos'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 18
     strategy:
@@ -120,10 +127,15 @@ jobs:
           $config = Join-Path $env:APPDATA 'RustDesk/config'
           New-Item -ItemType Directory -Path $config -Force | Out-Null
           @('[options]', 'custom-rendezvous-server = "127.0.0.1:9"', 'allow-auto-update = "N"') | Set-Content -LiteralPath "$config/RustDesk2.toml" -Encoding utf8
-          $setup = Start-Process -FilePath "$PWD/Desklink-windows-$env:ARCHITECTURE-install.exe" -ArgumentList '--silent-install' -PassThru -Wait
-          if ($setup.ExitCode -ne 0) { throw "Installer exit code $($setup.ExitCode)" }
-          $service = Get-Service -Name RustDesk
-          $service.WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
+          $setup = Start-Process -FilePath "$PWD/Desklink-windows-$env:ARCHITECTURE-install.exe" -ArgumentList '--silent-install' -PassThru
+          $deadline = [DateTime]::UtcNow.AddSeconds(60)
+          do {
+            $service = Get-Service -Name RustDesk -ErrorAction SilentlyContinue
+            if ($service -and $service.Status -eq 'Running') { break }
+            if ($setup.HasExited -and $setup.ExitCode -ne 0) { throw "Installer exit code $($setup.ExitCode)" }
+            Start-Sleep -Milliseconds 500
+          } while ([DateTime]::UtcNow -lt $deadline)
+          if (-not $service -or $service.Status -ne 'Running') { throw 'RustDesk service did not start after installation' }
           $exe = Join-Path $env:ProgramFiles 'RustDesk/rustdesk.exe'
           if ((& $exe --version | Out-String).Trim() -ne '1.5.3') { throw 'Unexpected installed version' }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
