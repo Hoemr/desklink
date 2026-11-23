@@ -47,6 +47,16 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: ./scripts/smoke-windows.ps1 -Binary ./dist/package/desklink.exe
+      - name: Exercise Windows OpenSSH jump and forwarding
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $nativeSSH = Join-Path $env:SystemRoot 'System32\OpenSSH\ssh.exe'
+          $env:PATH = "$(Split-Path $nativeSSH);$env:PATH"
+          & $nativeSSH -V
+          $launcher = (Resolve-Path dist/package/desklink.exe).Path
+          go -C scripts/sshfixture run . $launcher
       - name: Package the launcher
         id: package
         shell: pwsh

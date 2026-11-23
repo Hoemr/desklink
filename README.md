@@ -90,3 +90,5 @@ Desklink 原创代码使用 MIT。RustDesk 的客户端和 OSS 服务端由各�
 ## 构建产物
 
 GitHub Actions 在 macOS 和 Windows 的 x64、ARM64 运行器上构建，产物包含启动器、示例配置和说明。Windows 测试用临时协议处理程序接收 `desktop`、`files` 和 `terminal` 发出的链接，并逐条核对地址。实际远程画面和键鼠由 RustDesk 会话验收。
+
+Windows 的 SSH 集成测试用系统 OpenSSH、临时密钥和回环测试主机验证 `ProxyJump`、命令执行及桌面端口转发。测试依赖位于独立的 `scripts/sshfixture` 模块。
