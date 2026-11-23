@@ -128,6 +128,10 @@ jobs:
           app="$RUNNER_TEMP/Desklink.app"
           ditto build/macos/Build/Products/Release/RustDesk.app "$app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = 'com.hoemr.desklink'
+          for component in "$app"/Contents/Frameworks/*.framework "$app"/Contents/Frameworks/*.dylib; do
+            codesign --force --sign - --options 0 --timestamp=none --preserve-metadata=entitlements "$component"
+          done
+          codesign --force --sign - --options 0 --timestamp=none --preserve-metadata=entitlements "$app"
           codesign --verify --deep --strict "$app"
           test "$(lipo -archs "$app/Contents/MacOS/RustDesk")" = "$ARCHITECTURE"
           "$app/Contents/MacOS/RustDesk" --version

@@ -6,7 +6,7 @@
 
 `native/` 为 RustDesk 1.5.3 的桌面和移动端连接页加入「Desklink」。应用内登录现有账号，设备卡片可分别打开原生桌面、SSH 终端和原生文件管理器。桌面和文件管理器使用 RustDesk 网络设置里的自建 ID 服务器与公钥，由 RustDesk 设备凭据授权。应用内 SSH 使用账号服务上已保存的 SSH 凭据。
 
-在 GitHub Actions 手动运行「Graphical desktop builds」可构建图形客户端。产物使用 `desklink-graphical-*` 命名。Mac 解压后打开 `Desklink.app`，Windows 解压整个目录后打开 `rustdesk.exe`，再从主窗口点「Desklink」。图形客户端以测试包形式提供，连接入口及账号配置见下文。
+在 GitHub Actions 手动运行「Graphical desktop builds」可构建图形客户端。产物使用 `desklink-graphical-*` 命名。Mac 解压后打开 `Desklink.app`，Windows 解压整个目录后打开 `rustdesk.exe`，再从主窗口点「Desklink」。图形客户端以测试包形式提供，Mac 包采用 ad-hoc 签名。连接入口及账号配置见下文。
 
 1. 获取 RustDesk 1.5.3 的源码，应用接入补丁并按上游的对应平台流程构建。 [RustDesk 构建文档](https://rustdesk.com/docs/en/dev/build/)
 
