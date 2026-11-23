@@ -49,13 +49,13 @@ var (
 )
 
 type device struct {
-	Name         string `json:"name"`
-	ID           string `json:"id"`
-	Address      string `json:"address"`
-	SSH          string `json:"ssh"`
-	SSHTunnel    string `json:"ssh_tunnel"`
-	SSHUser      string `json:"ssh_user"`
-	SSHLocalPort uint16 `json:"ssh_local_port"`
+	Name          string `json:"name"`
+	ID            string `json:"id"`
+	Address       string `json:"address"`
+	SSH           string `json:"ssh"`
+	SSHTunnel     string `json:"ssh_tunnel"`
+	SSHUser       string `json:"ssh_user"`
+	SSHLocalPort  uint16 `json:"ssh_local_port"`
 	FileLimitKbps uint32 `json:"file_limit_kbps"`
 }
 
