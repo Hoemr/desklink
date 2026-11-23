@@ -104,18 +104,37 @@ def verify_file_download(desktop_link, expected):
     adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", link, "-p", PACKAGE)
 
     def open_remote():
-        if remote := label("Remote"):
+        nodes = ui()
+        if any("No active console user logged on" in node.get("text", "") for node in nodes):
+            return "console-required"
+        remote = next((node for node in nodes if node.get("content-desc") == "Remote"), None)
+        if remote is not None:
             tap_node(remote)
-            return True
-        if password := password_field():
+            return "open"
+        password = password_field()
+        if password is not None:
             tap_node(password)
             adb("shell", "input", "text", PASSWORD)
             tap_node(wait_for(lambda: label("OK", "Confirm"), "file transfer password confirmation"))
-        return False
+        return None
 
-    wait_for(open_remote, "file manager remote side", 40)
-    row = wait_for(lambda: label(expected.name), "remote file", 30)
-    x1, y1, x2, y2 = map(int, re.findall(r"\d+", row.get("bounds")))
+    result = wait_for(open_remote, "file manager remote side", 40)
+
+    def remote_file_or_console_required():
+        for node in ui():
+            if "No active console user logged on" in node.get("text", ""):
+                return "console-required"
+            if node.get("text") == expected.name or node.get("content-desc") == expected.name:
+                return node
+        return None
+
+    if result != "console-required":
+        result = wait_for(remote_file_or_console_required, "remote file or the console-user requirement", 30)
+    if result == "console-required":
+        screenshot("file-transfer-console-required")
+        print("SKIP Android file download: the Xvfb host has no active console user", flush=True)
+        return
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", result.get("bounds")))
     x, y = str((x1 + x2) // 2), str((y1 + y2) // 2)
     adb("shell", "input", "swipe", x, y, x, y, "700")
     tap_node(wait_for(lambda: label("Local"), "file manager local side"))
@@ -168,7 +187,8 @@ def main():
 
     with ExitStack() as stack:
         expected = Path.home() / "desklink-transfer-fixture.bin"
-        expected.write_bytes(os.urandom(2 * 1024 * 1024))
+        with expected.open("xb") as file:
+            file.write(os.urandom(2 * 1024 * 1024))
         stack.callback(expected.unlink, missing_ok=True)
         def start(name, *args, cwd=None, env=None):
             log = stack.enter_context((REPORT / f"{name}.log").open("wb"))
