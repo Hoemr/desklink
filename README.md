@@ -8,6 +8,19 @@
 
 在 GitHub Actions 手动运行「Graphical desktop builds」可构建图形客户端。产物使用 `desklink-graphical-*` 命名。Mac 解压后打开 `Desklink.app`，Windows 解压整个目录后打开 `rustdesk.exe`，再从主窗口点「Desklink」。图形客户端以测试包形式提供，Mac 包采用 ad-hoc 签名。连接入口及账号配置见下文。
 
+### 一体化安装包
+
+在 GitHub Actions 运行「Desklink host installers」，输入一次成功的图形客户端构建编号。每个架构的安装包同时包含 Desklink 界面和被控服务。
+
+| 系统 | 安装和开启被控 |
+| --- | --- |
+| macOS | 下载对应架构的 `Desklink-macos-*.pkg`。应用显示为 Desklink，内部使用 `/Applications/RustDesk.app` 以接上原来的后台服务。打开应用后在系统设置授予屏幕录制和辅助功能权限，再通过应用的服务入口启用被控。已有原版的电脑应在本机结束正在进行的远控会话后安装并重启。 |
+| Windows | 下载对应架构的 `Desklink-windows-*-install.exe`。同一个文件安装客户端和 Windows 服务，保留原版 EXE 的服务名称与配置路径。已有 MSI 安装时，需先在本机卸载 MSI，再安装这份 EXE。 |
+| Android | Desklink APK 本身包含「共享屏幕」入口，按 Android 提示授予录屏和操作权限。 |
+| iOS / iPadOS | 在这个方案中用作主控端。 |
+
+macOS 和 Windows 安装包使用上游 RustDesk 1.5.3 的服务机制。 [macOS 权限](https://rustdesk.com/docs/en/client/mac/) · [Windows 部署](https://rustdesk.com/docs/en/self-host/client-deployment/) · [手机主控与被控说明](https://rustdesk.com/blog/rustdesk-remote-control-android-ios/?lang=en)
+
 1. 获取 RustDesk 1.5.3 的源码，应用接入补丁并按上游的对应平台流程构建。 [RustDesk 构建文档](https://rustdesk.com/docs/en/dev/build/)
 
    ```sh
