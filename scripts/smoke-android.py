@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import os
@@ -96,6 +97,40 @@ def keyboard_visible():
     return b"mInputShown=true" in state
 
 
+def verify_file_download(desktop_link, expected):
+    adb("shell", "am", "force-stop", PACKAGE)
+    adb("shell", "appops", "set", "--uid", PACKAGE, "MANAGE_EXTERNAL_STORAGE", "allow")
+    link = desktop_link.replace("rustdesk://connection/new/", "rustdesk://file-transfer/", 1)
+    adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", link, "-p", PACKAGE)
+
+    def open_remote():
+        if remote := label("Remote"):
+            tap_node(remote)
+            return True
+        if password := password_field():
+            tap_node(password)
+            adb("shell", "input", "text", PASSWORD)
+            tap_node(wait_for(lambda: label("OK", "Confirm"), "file transfer password confirmation"))
+        return False
+
+    wait_for(open_remote, "file manager remote side", 40)
+    row = wait_for(lambda: label(expected.name), "remote file", 30)
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", row.get("bounds")))
+    x, y = str((x1 + x2) // 2), str((y1 + y2) // 2)
+    adb("shell", "input", "swipe", x, y, x, y, "700")
+    tap_node(wait_for(lambda: label("Local"), "file manager local side"))
+    tap_node(wait_for(lambda: label("Paste here?"), "file transfer paste action"))
+    want = hashlib.sha256(expected.read_bytes()).digest()
+
+    def transferred():
+        paths = adb("shell", "find", "/sdcard/", "-name", expected.name, "-type", "f").decode().splitlines()
+        return any(hashlib.sha256(adb("exec-out", "dd", f"if={path}", "status=none")).digest() == want for path in paths)
+
+    wait_for(transferred, "downloaded file SHA-256", 30)
+    screenshot("file-transfer")
+    print("PASS Android file manager downloads the host file with matching SHA-256", flush=True)
+
+
 def fixture(log):
     import tkinter as tk
 
@@ -128,6 +163,9 @@ def main():
     rustdesk_config.mkdir(parents=True, exist_ok=True)
 
     with ExitStack() as stack:
+        expected = Path.home() / "desklink-transfer-fixture.bin"
+        expected.write_bytes(os.urandom(2 * 1024 * 1024))
+        stack.callback(expected.unlink, missing_ok=True)
         def start(name, *args, cwd=None, env=None):
             log = stack.enter_context((REPORT / f"{name}.log").open("wb"))
             child = subprocess.Popen(args, cwd=cwd, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -234,6 +272,7 @@ def main():
         wait_for(lambda: (REPORT / "typed.txt").read_text() == "desk", "soft-key taps on the remote desktop")
         screenshot("keyboard-result")
         print("PASS Android on-screen keyboard taps type 'desk' on the desktop", flush=True)
+        verify_file_download(href, expected)
 
 
 if len(sys.argv) > 2 and sys.argv[2] == "host":
