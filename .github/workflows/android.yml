@@ -1,0 +1,57 @@
+name: Android remote control
+
+'on':
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android.yml'
+      - 'scripts/smoke-android.py'
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.1'
+          cache: false
+      - name: Prepare isolated fixtures
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/desklink-android/reports"
+          cd "$RUNNER_TEMP/desklink-android"
+          base=https://github.com/rustdesk/rustdesk/releases/download/1.5.3
+          curl -fsSL --retry 2 "$base/rustdesk-1.5.3-x86_64.deb" -o rustdesk.deb
+          curl -fsSL --retry 2 "$base/rustdesk-1.5.3-x86_64-signed.apk" -o rustdesk.apk
+          printf '%s\n' \
+            '81096d2f65fd43352540c351bca15bb0712a2a6f9efa4c95e9fff25cb97b3b81  rustdesk.deb' \
+            '772bc1b3662952f4e5b994d7a50f840fbf3bc0803d4a97a5945fa9390706e9c7  rustdesk.apk' | sha256sum -c
+          sudo apt-get update -qq
+          sudo apt-get install -qy --no-install-recommends ./rustdesk.deb xvfb x11-utils python3-tk python3-pil dbus-x11 libayatana-appindicator3-1
+          sudo systemctl stop rustdesk.service
+          sudo chmod a+rw /dev/kvm
+          cd "$GITHUB_WORKSPACE"
+          go build -trimpath -o "$RUNNER_TEMP/desklink-android/desklink" .
+      - name: Exercise Android RustDesk on an emulator
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          script: /usr/bin/python3 scripts/smoke-android.py "$RUNNER_TEMP/desklink-android"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: android-smoke-evidence
+          path: ${{ runner.temp }}/desklink-android/reports/
+          retention-days: 5
+          if-no-files-found: ignore
