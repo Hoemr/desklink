@@ -101,6 +101,17 @@ jobs:
           path: upstream/flutter
           github-token: ${{ github.token }}
           run-id: ${{ inputs.bridge_run || github.run_id }}
+      - name: Keep macOS secondary windows rendering after focus changes
+        run: |
+          # Apply the RustDesk macOS workaround for flutter/flutter#133533.
+          node -e '
+            const fs = require("node:fs");
+            const path = process.argv[1];
+            const source = fs.readFileSync(path, "utf8");
+            const call = "_setFramesEnabledState(false);";
+            if (source.split(call).length !== 2) throw new Error("Unexpected Flutter scheduler source");
+            fs.writeFileSync(path, source.replace(call, "// " + call));
+          ' "$FLUTTER_ROOT/packages/flutter/lib/src/scheduler/binding.dart"
       - name: Prepare the Mac app and verified engine
         run: |
           test "$(uname -m)" = "$ARCHITECTURE"
