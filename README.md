@@ -14,12 +14,12 @@
 
 | 系统 | 安装和开启被控 |
 | --- | --- |
-| macOS | 下载对应架构的 `Desklink-macos-*.pkg`。应用显示为 Desklink，内部使用 `/Applications/RustDesk.app` 以接上原来的后台服务。打开应用后在系统设置授予屏幕录制和辅助功能权限，再通过应用的服务入口启用被控。已有原版的电脑应在本机结束正在进行的远控会话后安装并重启。 |
-| Windows | 下载对应架构的 `Desklink-windows-*-install.exe`。同一个文件安装客户端和 Windows 服务，保留原版 EXE 的服务名称与配置路径。已有 MSI 安装时，需先在本机卸载 MSI，再安装这份 EXE。 |
+| macOS | 下载对应架构的 `Desklink-macos-*.pkg`。打开 `/Applications/Desklink.app`，授予屏幕录制和辅助功能权限，再通过应用启用被控。后台服务标识为 `com.hoemr.Desklink_service`。 |
+| Windows | 下载对应架构的 `Desklink-windows-*-install.exe`。安装到 `%ProgramFiles%\Desklink`，后台服务名为 `Desklink`。 |
 | Android | Desklink APK 本身包含「共享屏幕」入口，按 Android 提示授予录屏和操作权限。 |
 | iOS / iPadOS | 在这个方案中用作主控端。 |
 
-macOS 和 Windows 安装包使用上游 RustDesk 1.5.3 的服务机制。 [macOS 权限](https://rustdesk.com/docs/en/client/mac/) · [Windows 部署](https://rustdesk.com/docs/en/self-host/client-deployment/) · [手机主控与被控说明](https://rustdesk.com/blog/rustdesk-remote-control-android-ios/?lang=en)
+macOS 和 Windows 上的 Desklink 使用独立的应用目录、后台服务和设备配置，可与 RustDesk 分别安装和卸载。首次打开 Desklink 会生成新的设备 ID。重新填写自建 ID 服务器及公钥，并在账号入口更新设备备注里的 ID。若同时启用两套应用的 IP 直连，为它们配置不同的监听端口。 [macOS 权限](https://rustdesk.com/docs/en/client/mac/) · [Windows 部署](https://rustdesk.com/docs/en/self-host/client-deployment/) · [手机主控与被控说明](https://rustdesk.com/blog/rustdesk-remote-control-android-ios/?lang=en)
 
 1. 获取 RustDesk 1.5.3 的源码，应用接入补丁并按上游的对应平台流程构建。 [RustDesk 构建文档](https://rustdesk.com/docs/en/dev/build/)
 

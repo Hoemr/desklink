@@ -4,7 +4,7 @@ name: Desklink host installers
   workflow_dispatch:
     inputs:
       gui_run:
-        description: Run ID of a Graphical desktop builds workflow with all four GUI artifacts
+        description: Run ID of a Graphical desktop builds workflow for RustDesk 1.5.3
         required: true
         type: string
       platform:
@@ -17,85 +17,67 @@ permissions:
   contents: read
   actions: read
 
+env:
+  RUSTDESK_COMMIT: 95cca3f661f635b3cc85c04935fe8d96d8f432ef
+  VCPKG_COMMIT: 9e593bb18ea69cc5095e012465dcd675a822ed0d
+
 jobs:
+  bridge:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ env.RUSTDESK_COMMIT }}
+          path: upstream
+          submodules: recursive
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: '3.24.5'
+      - name: Generate the Rust side of the Flutter bridge
+        working-directory: upstream
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qy --no-install-recommends clang cmake libclang-dev libgtk-3-dev llvm-dev nasm ninja-build pkg-config
+          rustup toolchain install 1.75 --profile minimal --component rustfmt
+          cargo +1.75 install cargo-expand --version 1.0.95 --locked
+          cargo +1.75 install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
+          (cd flutter && flutter pub get)
+          RUSTUP_TOOLCHAIN=1.75 "$HOME/.cargo/bin/flutter_rust_bridge_codegen" --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart --c-output ./flutter/macos/Runner/bridge_generated.h
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desklink-host-bridge
+          path: upstream/src/bridge_generated*.rs
+          if-no-files-found: error
+
   macos:
+    needs: bridge
     if: inputs.platform != 'windows'
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 95
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: macos-15
             architecture: arm64
-            asset: aarch64
-            digest: e6d30fa1633d772c48935907c208ca4e555a856fb2038af3aaa87a327c29360b
+            target: aarch64-apple-darwin
+            triplet: arm64-osx
+            features: flutter,hwcodec,unix-file-copy-paste,screencapturekit
           - runner: macos-15-intel
             architecture: x86_64
-            asset: x86_64
-            digest: 74d06e6b2e273a128e8d36313e30d47db2063f453a4235ed4d9e5cdfdf9be538
+            target: x86_64-apple-darwin
+            triplet: x64-osx
+            features: flutter,hwcodec,unix-file-copy-paste
     env:
       ARCHITECTURE: ${{ matrix.architecture }}
-      ENGINE_ASSET: ${{ matrix.asset }}
-      ENGINE_SHA256: ${{ matrix.digest }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: desklink-graphical-macos-${{ matrix.architecture }}
-          path: graphical
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.gui_run }}
-      - name: Bundle the verified host helper into the installer
-        run: |
-          test "$(uname -m)" = "$ARCHITECTURE"
-          ditto -x -k "graphical/desklink-graphical-macos-$ARCHITECTURE.zip" graphical/app
-          curl -fsSL "https://github.com/rustdesk/rustdesk/releases/download/1.5.3/rustdesk-1.5.3-$ENGINE_ASSET.dmg" -o upstream-engine.dmg
-          printf '%s  %s\n' "$ENGINE_SHA256" upstream-engine.dmg | shasum -a 256 -c
-          mount="$RUNNER_TEMP/desklink-host-engine"
-          mkdir -p "$mount"
-          hdiutil attach -readonly -nobrowse -mountpoint "$mount" upstream-engine.dmg
-          trap 'hdiutil detach "$mount"' EXIT
-          bash native/package-macos.sh graphical/app/Desklink.app "$mount/RustDesk.app/Contents/MacOS/service" "Desklink-macos-$ARCHITECTURE.pkg"
-      - name: Check installation layout and launchd registration on the runner
-        run: |
-          app=/Applications/RustDesk.app
-          test ! -e "$app"
-          sudo installer -pkg "Desklink-macos-$ARCHITECTURE.pkg" -target /
-          codesign --verify --deep --strict "$app"
-          test "$("$app/Contents/MacOS/RustDesk" --version)" = 1.5.3
-          sudo "$app/Contents/MacOS/service" --write-plists
-          daemon=/Library/LaunchDaemons/com.carriez.RustDesk_service.plist
-          agent=/Library/LaunchAgents/com.carriez.RustDesk_server.plist
-          test "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$daemon")" = "$app/Contents/MacOS/service"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$agent")" = "$app/Contents/MacOS/RustDesk"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$agent")" = '--server'
-          sudo launchctl bootstrap system "$daemon"
-          trap 'sudo launchctl bootout system "$daemon"' EXIT
-          sudo launchctl kickstart -p system/com.carriez.RustDesk_service
-          sudo launchctl print system/com.carriez.RustDesk_service | python3 -c 'import sys; assert "state = running" in sys.stdin.read()'
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: desklink-host-macos-${{ matrix.architecture }}
-          path: Desklink-macos-${{ matrix.architecture }}.pkg
-          if-no-files-found: error
-
-  windows:
-    if: inputs.platform != 'macos'
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 18
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: windows-2022
-            architecture: x64
-          - runner: windows-11-arm
-            architecture: arm64
-    env:
-      ARCHITECTURE: ${{ matrix.architecture }}
+      RUST_TARGET: ${{ matrix.target }}
+      RUST_FEATURES: ${{ matrix.features }}
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+      VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.triplet }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -103,41 +85,186 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: rustdesk/rustdesk
-          ref: 95cca3f661f635b3cc85c04935fe8d96d8f432ef
+          ref: ${{ env.RUSTDESK_COMMIT }}
           path: upstream
           submodules: recursive
           persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: desklink-host-bridge
+          path: upstream/src
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: desklink-graphical-macos-${{ matrix.architecture }}
+          path: graphical
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.gui_run }}
+      - name: Set the Desklink app and service identity
+        run: node native/brand-desktop.cjs upstream
+      - name: Set up Rust and vcpkg build tools
+        run: |
+          rustup toolchain install 1.81 --profile minimal
+          rustup target add --toolchain 1.81 "$RUST_TARGET"
+          curl -fsSL https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip -o "$RUNNER_TEMP/nasm.zip"
+          unzip -q "$RUNNER_TEMP/nasm.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/nasm-2.16.03" >> "$GITHUB_PATH"
+      - uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+          vcpkgJsonGlob: upstream/vcpkg.json
+      - name: Build the Desklink engine and host helper
+        working-directory: upstream
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '12.3'
+        run: |
+          "$VCPKG_ROOT/vcpkg" install --triplet "$VCPKG_DEFAULT_TRIPLET" --x-install-root="$VCPKG_ROOT/installed"
+          cargo +1.81 build --locked --target "$RUST_TARGET" --release --lib --bin service --features "$RUST_FEATURES"
+      - name: Package Desklink
+        run: |
+          test "$(uname -m)" = "$ARCHITECTURE"
+          ditto -x -k "graphical/desklink-graphical-macos-$ARCHITECTURE.zip" graphical/app
+          engine="upstream/target/$RUST_TARGET/release"
+          bash native/package-macos.sh graphical/app/Desklink.app "$engine/liblibrustdesk.dylib" "$engine/service" "Desklink-macos-$ARCHITECTURE.pkg"
+      - name: Verify installation, fresh device ID, and launchd service
+        run: |
+          app=/Applications/Desklink.app
+          legacy="$HOME/Library/Preferences/com.carriez.RustDesk/RustDesk.toml"
+          mkdir -p "$(dirname "$legacy")"
+          printf 'id = "123456789"\n' > "$legacy"
+          original=$(shasum -a 256 "$legacy")
+          test ! -e "$app"
+          sudo installer -pkg "Desklink-macos-$ARCHITECTURE.pkg" -target /
+          codesign --verify --deep --strict "$app"
+          test "$( /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" )" = com.hoemr.desklink
+          test "$("$app/Contents/MacOS/Desklink" --version)" = 1.5.3
+          id=$("$app/Contents/MacOS/Desklink" --get-id)
+          [[ "$id" =~ ^1[0-9]{9}$ ]]
+          test "$("$app/Contents/MacOS/Desklink" --get-id)" = "$id"
+          test "$original" = "$(shasum -a 256 "$legacy")"
+          test ! -e /Applications/RustDesk.app
+          sudo "$app/Contents/MacOS/service" --write-plists
+          daemon=/Library/LaunchDaemons/com.hoemr.Desklink_service.plist
+          agent=/Library/LaunchAgents/com.hoemr.Desklink_server.plist
+          test ! -e /Library/LaunchDaemons/com.carriez.RustDesk_service.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$daemon")" = "$app/Contents/MacOS/service"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$agent")" = "$app/Contents/MacOS/Desklink"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$agent")" = '--server'
+          sudo launchctl bootstrap system "$daemon"
+          trap 'sudo launchctl bootout system "$daemon"' EXIT
+          sudo launchctl kickstart -p system/com.hoemr.Desklink_service
+          sudo launchctl print system/com.hoemr.Desklink_service | python3 -c 'import sys; assert "state = running" in sys.stdin.read()'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desklink-host-macos-${{ matrix.architecture }}
+          path: Desklink-macos-${{ matrix.architecture }}.pkg
+          if-no-files-found: error
+
+  windows:
+    needs: bridge
+    if: inputs.platform != 'macos'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 95
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            architecture: x64
+            target: x86_64-pc-windows-msvc
+            triplet: x64-windows-static
+            features: flutter,hwcodec,vram
+          - runner: windows-11-arm
+            architecture: arm64
+            target: aarch64-pc-windows-msvc
+            triplet: arm64-windows-static
+            features: flutter,hwcodec
+    env:
+      ARCHITECTURE: ${{ matrix.architecture }}
+      RUST_TARGET: ${{ matrix.target }}
+      RUST_FEATURES: ${{ matrix.features }}
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+      VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.triplet }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ env.RUSTDESK_COMMIT }}
+          path: upstream
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: desklink-host-bridge
+          path: upstream/src
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: desklink-graphical-windows-${{ matrix.architecture }}
           path: graphical
           github-token: ${{ github.token }}
           run-id: ${{ inputs.gui_run }}
+      - name: Set the Desklink app and service identity
+        run: node native/brand-desktop.cjs upstream
+      - uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0 # v2.0.9
+        with:
+          version: '15.0.6'
+      - name: Install the Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.75 --profile minimal
+          rustup target add --toolchain 1.75 $env:RUST_TARGET
+      - uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
+        with:
+          vcpkgDirectory: C:\vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+          vcpkgJsonGlob: upstream/vcpkg.json
+      - name: Build the Desklink engine
+        working-directory: upstream
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          & "$env:VCPKG_ROOT/vcpkg.exe" install "--triplet=$env:VCPKG_DEFAULT_TRIPLET" "--x-install-root=$env:VCPKG_ROOT/installed"
+          if ($env:ARCHITECTURE -eq 'arm64') {
+            $env:SODIUM_LIB_DIR = "$env:VCPKG_ROOT/installed/$env:VCPKG_DEFAULT_TRIPLET/lib"
+          }
+          cargo +1.75 build --locked --release --target $env:RUST_TARGET --lib --features $env:RUST_FEATURES
       - name: Build the one-file host installer
         shell: pwsh
         run: |
           Expand-Archive -LiteralPath "graphical/desklink-graphical-windows-$env:ARCHITECTURE.zip" -DestinationPath graphical/app
+          Move-Item -LiteralPath graphical/app/rustdesk.exe -Destination graphical/app/Desklink.exe
+          Copy-Item -LiteralPath "upstream/target/$env:RUST_TARGET/release/librustdesk.dll" -Destination graphical/app -Force
           & ./native/package-windows.ps1 -Upstream upstream -Bundle graphical/app -Architecture $env:ARCHITECTURE -Output "Desklink-windows-$env:ARCHITECTURE-install.exe"
-      - name: Check service installation on the runner
+      - name: Verify installation and the independent Windows service
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          if (Get-Service -Name RustDesk -ErrorAction SilentlyContinue) { throw 'Expected a clean runner' }
-          $config = Join-Path $env:APPDATA 'RustDesk/config'
+          $legacy = Join-Path $env:APPDATA 'RustDesk/config'
+          New-Item -ItemType Directory -Path $legacy -Force | Out-Null
+          'id = "123456789"' | Set-Content -LiteralPath "$legacy/RustDesk.toml" -Encoding utf8
+          $original = (Get-FileHash "$legacy/RustDesk.toml").Hash
+          $config = Join-Path $env:APPDATA 'Desklink/config'
           New-Item -ItemType Directory -Path $config -Force | Out-Null
-          @('[options]', 'custom-rendezvous-server = "127.0.0.1:9"', 'allow-auto-update = "N"') | Set-Content -LiteralPath "$config/RustDesk2.toml" -Encoding utf8
+          @('[options]', 'custom-rendezvous-server = "127.0.0.1:9"') | Set-Content -LiteralPath "$config/Desklink2.toml" -Encoding utf8
           $setup = Start-Process -FilePath "$PWD/Desklink-windows-$env:ARCHITECTURE-install.exe" -ArgumentList '--silent-install' -PassThru
           $deadline = [DateTime]::UtcNow.AddSeconds(60)
           do {
-            $service = Get-Service -Name RustDesk -ErrorAction SilentlyContinue
+            $service = Get-Service -Name Desklink -ErrorAction SilentlyContinue
             if ($service -and $service.Status -eq 'Running') { break }
             if ($setup.HasExited -and $setup.ExitCode -ne 0) { throw "Installer exit code $($setup.ExitCode)" }
             Start-Sleep -Milliseconds 500
           } while ([DateTime]::UtcNow -lt $deadline)
-          if (-not $service -or $service.Status -ne 'Running') { throw 'RustDesk service did not start after installation' }
-          $exe = Join-Path $env:ProgramFiles 'RustDesk/rustdesk.exe'
+          if (-not $service -or $service.Status -ne 'Running') { throw 'Desklink service did not start after installation' }
+          $exe = Join-Path $env:ProgramFiles 'Desklink/Desklink.exe'
           if ((& $exe --version | Out-String).Trim() -ne '1.5.3') { throw 'Unexpected installed version' }
+          $id = (& $exe --get-id | Out-String).Trim()
+          if ($id -notmatch '^1[0-9]{9}$') { throw "Expected a fresh Desklink ID, got '$id'" }
+          if (Get-Service -Name RustDesk -ErrorAction SilentlyContinue) { throw 'Unexpected RustDesk service' }
+          if (Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'RustDesk')) { throw 'Unexpected RustDesk installation' }
+          if ((Get-FileHash "$legacy/RustDesk.toml").Hash -ne $original) { throw 'Original RustDesk configuration changed' }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: desklink-host-windows-${{ matrix.architecture }}

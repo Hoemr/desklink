@@ -11,7 +11,7 @@ $upstreamPath = (Resolve-Path -LiteralPath $Upstream).Path
 $bundlePath = (Resolve-Path -LiteralPath $Bundle).Path
 $outputPath = [System.IO.Path]::GetFullPath($Output)
 if ($outputPath -notlike '*install.exe') { throw 'Name the output *-install.exe to open the installer' }
-$exePath = Join-Path $bundlePath 'rustdesk.exe'
+$exePath = Join-Path $bundlePath 'Desklink.exe'
 if (-not (Test-Path -LiteralPath $exePath) -or
     -not (Test-Path -LiteralPath (Join-Path $bundlePath 'librustdesk.dll')) -or
     -not (Test-Path -LiteralPath (Join-Path $bundlePath 'data/app.so'))) {

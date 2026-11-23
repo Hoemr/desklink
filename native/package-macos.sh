@@ -1,35 +1,48 @@
 #!/bin/bash
 set -euo pipefail
 
-if [[ $# != 3 ]]; then
-  printf 'Usage: bash native/package-macos.sh Desklink.app service output.pkg\n' >&2
+if [[ $# != 4 ]]; then
+  printf 'Usage: bash native/package-macos.sh Desklink.app liblibrustdesk.dylib service output.pkg\n' >&2
   exit 2
 fi
 
 source_app="$1"
-service="$2"
-output="$3"
+engine="$2"
+service="$3"
+output="$4"
 test -x "$source_app/Contents/MacOS/RustDesk"
 test -x "$service"
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$source_app/Contents/Info.plist")" = com.hoemr.desklink
 codesign --verify --deep --strict "$source_app"
-test "$(lipo -archs "$source_app/Contents/MacOS/RustDesk")" = "$(lipo -archs "$service")"
+arch=$(lipo -archs "$source_app/Contents/MacOS/RustDesk")
+test "$(lipo -archs "$engine")" = "$arch"
+test "$(lipo -archs "$service")" = "$arch"
 
 stage=$(mktemp -d -t desklink-package)
 trap 'python3 -c "import shutil,sys; shutil.rmtree(sys.argv[1])" "$stage"' EXIT
-app="$stage/payload/RustDesk.app"
+app="$stage/payload/Desklink.app"
 ditto "$source_app" "$app"
+mv "$app/Contents/MacOS/RustDesk" "$app/Contents/MacOS/Desklink"
+install -m 755 "$engine" "$app/Contents/Frameworks/liblibrustdesk.dylib"
 install -m 755 "$service" "$app/Contents/MacOS/service"
-python3 -c 'import pathlib,plistlib,sys; p=pathlib.Path(sys.argv[1]); data=plistlib.loads(p.read_bytes()); data["CFBundleDisplayName"]="Desklink"; p.write_bytes(plistlib.dumps(data))' "$app/Contents/Info.plist"
+info="$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Set :CFBundleExecutable Desklink' -c 'Set :CFBundleName Desklink' \
+  -c 'Set :CFBundleURLTypes:0:CFBundleURLName com.hoemr.desklink' \
+  -c 'Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 desklink' "$info"
+if /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$info" >/dev/null 2>&1; then
+  /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Desklink' "$info"
+else
+  /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string Desklink' "$info"
+fi
 
 for component in "$app"/Contents/Frameworks/*.framework "$app"/Contents/Frameworks/*.dylib "$app/Contents/MacOS/service"; do
   codesign --force --sign - --options 0 --timestamp=none --preserve-metadata=entitlements "$component"
 done
 codesign --force --sign - --options 0 --timestamp=none --preserve-metadata=entitlements "$app"
 codesign --verify --deep --strict "$app"
-test "$("$app/Contents/MacOS/RustDesk" --version)" = 1.5.3
+test "$("$app/Contents/MacOS/Desklink" --version)" = 1.5.3
 
-# The native launchd templates expect the RustDesk install path and service names.
 pkgbuild --analyze --root "$stage/payload" "$stage/components.plist"
-python3 -c 'import pathlib,plistlib,sys; p=pathlib.Path(sys.argv[1]); items=plistlib.loads(p.read_bytes()); assert len(items)==1 and items[0]["RootRelativeBundlePath"]=="RustDesk.app"; items[0]["BundleIsRelocatable"]=False; p.write_bytes(plistlib.dumps(items))' "$stage/components.plist"
-pkgbuild --root "$stage/payload" --component-plist "$stage/components.plist" --identifier com.hoemr.desklink.desktop --version 1.5.3 --install-location /Applications "$output"
+test "$(/usr/libexec/PlistBuddy -c 'Print :0:RootRelativeBundlePath' "$stage/components.plist")" = Desklink.app
+/usr/libexec/PlistBuddy -c 'Set :0:BundleIsRelocatable false' "$stage/components.plist"
+pkgbuild --root "$stage/payload" --component-plist "$stage/components.plist" --identifier com.hoemr.desklink.host --version 1.5.3 --install-location /Applications "$output"
