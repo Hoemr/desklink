@@ -3,17 +3,16 @@ import 'dart:convert';
 import 'dart:io';
 
 const _timeout = Duration(seconds: 12);
-final _rustDeskId = RegExp(r'^RustDesk ID: ([a-zA-Z0-9_-]{3,64})$', multiLine: true);
 
 class DesklinkDevice {
   DesklinkDevice(Map<String, dynamic> node)
       : id = node['_id'] as String,
         name = node['name'] as String,
-        desktopId = _rustDeskId.firstMatch(node['desc'] as String? ?? '')?.group(1);
+        nativeAccess = node['desklinkNative'] == true;
 
   final String id;
   final String name;
-  final String? desktopId;
+  final bool nativeAccess;
 }
 
 class DesklinkAccount {
@@ -112,7 +111,7 @@ class DesklinkAccount {
       final message = jsonDecode(data as String) as Map<String, dynamic>;
       if (message['action'] == 'userinfo' && !signedIn) {
         signedIn = true;
-        socket.add(jsonEncode({'action': 'nodes'}));
+        socket.add(jsonEncode({'action': 'nodes', 'desklink': true}));
       }
       if (signedIn && message['action'] == 'nodes') {
         final groups = message['nodes'] as Map<String, dynamic>;
@@ -130,6 +129,46 @@ class DesklinkAccount {
       throw const HttpException('此设备不在当前账号中');
     }
     return _connect('/sshterminalrelay.ashx', {'nodeid': device.id});
+  }
+
+  Future<({String id, String password})> authorizeDesktop(DesklinkDevice device) async {
+    if (!devices.contains(device) || !device.nativeAccess) {
+      throw const HttpException('此设备未登记原生远控');
+    }
+    final socket = await _connect('/control.ashx');
+    try {
+      return await _readDesktopAccess(socket, device.id).timeout(_timeout);
+    } finally {
+      unawaited(socket.close());
+    }
+  }
+
+  Future<({String id, String password})> _readDesktopAccess(
+    WebSocket socket,
+    String nodeId,
+  ) async {
+    var signedIn = false;
+    await for (final data in socket.where((event) => event is String)) {
+      final message = jsonDecode(data as String) as Map<String, dynamic>;
+      if (!signedIn && message['action'] == 'userinfo') {
+        signedIn = true;
+        socket.add(jsonEncode({'action': 'desklink-desktop-access', 'nodeid': nodeId}));
+      } else if (signedIn && message['action'] == 'desklink-desktop-access') {
+        final access = message['access'];
+        if (access is Map<String, dynamic>) {
+          final id = access['id'];
+          final password = access['password'];
+          if (id is String && RegExp(r'^[a-zA-Z0-9_-]{3,64}$').hasMatch(id) &&
+              password is String && RegExp(r'^[0-9a-f]{64}$').hasMatch(password)) {
+            return (id: id, password: password);
+          }
+        }
+        break;
+      } else if (message['action'] == 'close') {
+        break;
+      }
+    }
+    throw const HttpException('账号没有此设备的远控权限，请重新登录或检查设备登记');
   }
 
   void close() => _client.close(force: true);

@@ -9,10 +9,10 @@ import 'desklink_account.dart';
 
 class DesklinkPage extends StatefulWidget {
   const DesklinkPage(
-      {super.key, required this.openDesktop, required this.openFiles});
+      {super.key, required this.openNative});
 
-  final void Function(BuildContext context, String id) openDesktop;
-  final void Function(BuildContext context, String id) openFiles;
+  final void Function(
+      BuildContext context, String id, String password, bool fileTransfer) openNative;
 
   @override
   State<DesklinkPage> createState() => _DesklinkPageState();
@@ -201,24 +201,23 @@ class _DesklinkPageState extends State<DesklinkPage> {
       separatorBuilder: (_, __) => const Divider(),
       itemBuilder: (context, index) {
         final device = account.devices[index];
-        final desktopId = device.desktopId;
         return ListTile(
           leading: const Icon(Icons.computer_outlined),
           title: Text(device.name),
           subtitle: Wrap(
             spacing: 8,
             children: [
-              if (desktopId != null)
+              if (device.nativeAccess)
                 TextButton.icon(
                   icon: const Icon(Icons.desktop_windows_outlined),
                   label: const Text('远程桌面'),
-                  onPressed: () => widget.openDesktop(context, desktopId),
+                  onPressed: () => _openNative(account, device, false),
                 ),
-              if (desktopId != null)
+              if (device.nativeAccess)
                 TextButton.icon(
                   icon: const Icon(Icons.folder_open),
                   label: const Text('传输文件'),
-                  onPressed: () => widget.openFiles(context, desktopId),
+                  onPressed: () => _openNative(account, device, true),
                 ),
               TextButton.icon(
                 icon: const Icon(Icons.terminal),
@@ -233,6 +232,21 @@ class _DesklinkPageState extends State<DesklinkPage> {
         );
       },
     );
+  }
+
+  Future<void> _openNative(DesklinkAccount account, DesklinkDevice device, bool files) async {
+    try {
+      final access = await account.authorizeDesktop(device);
+      if (mounted && _account == account) {
+        widget.openNative(context, access.id, access.password, files);
+      }
+    } catch (error) {
+      if (mounted && _account == account) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          error is HttpException ? error.message : '无法连接账号服务',
+        )));
+      }
+    }
   }
 }
 

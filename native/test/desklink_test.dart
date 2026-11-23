@@ -9,8 +9,9 @@ const _password = 'Desklink fixture + & 终端';
 const _device = {
   '_id': 'node//mini',
   'name': 'Mac mini',
-  'desc': 'Office\nRustDesk ID: 123456789',
+  'desklinkNative': true,
 };
+final _accessPassword = List.filled(64, 'a').join();
 
 void main() {
   late HttpServer server;
@@ -39,14 +40,21 @@ void main() {
   });
 
   test(
-      'one account resolves the desktop ID and opens two independent SSH sessions',
+      'one account authorizes the desktop and opens two independent SSH sessions',
       () async {
     final account =
         await DesklinkAccount.signIn(address, 'desklink', _password);
     addTearDown(account.close);
     final device = account.devices.single;
     expect(device.name, 'Mac mini');
-    expect(device.desktopId, '123456789');
+    expect(device.nativeAccess, isTrue);
+    final access = await account.authorizeDesktop(device);
+    expect(access.id, '123456789');
+    expect(access.password, _accessPassword);
+    await expectLater(
+      account.authorizeDesktop(DesklinkDevice(_device)),
+      throwsA(isA<HttpException>()),
+    );
     expect(
       () => account
           .openSsh(DesklinkDevice({'_id': 'node//other', 'name': 'Other'})),
@@ -76,9 +84,12 @@ void main() {
   });
 
   test('device notes cannot override the configured RustDesk server', () {
-    final node = DesklinkDevice(
-        {..._device, 'desc': 'RustDesk ID: 123456@elsewhere.test'});
-    expect(node.desktopId, isNull);
+    final node = DesklinkDevice({
+      '_id': 'node//foreign',
+      'name': 'Foreign',
+      'desc': 'RustDesk ID: 123456@elsewhere.test',
+    });
+    expect(node.nativeAccess, isFalse);
   });
 }
 
@@ -109,12 +120,20 @@ Future<void> _fixture(HttpRequest request) async {
   if (request.uri.path == '/control.ashx') {
     socket.add('{"action":"userinfo"}');
     await for (final message in socket) {
-      if (jsonDecode(message as String)['action'] == 'nodes') {
+      final command = jsonDecode(message as String) as Map<String, dynamic>;
+      if (command['action'] == 'nodes' && command['desklink'] == true) {
         socket.add(jsonEncode({
           'action': 'nodes',
           'nodes': {
             'mesh//private': [_device]
           }
+        }));
+      } else if (command['action'] == 'desklink-desktop-access') {
+        socket.add(jsonEncode({
+          'action': 'desklink-desktop-access',
+          'access': command['nodeid'] == 'node//mini'
+              ? {'id': '123456789', 'password': _accessPassword}
+              : null,
         }));
       }
     }

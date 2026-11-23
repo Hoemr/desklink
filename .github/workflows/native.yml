@@ -4,9 +4,9 @@ name: Native integration
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['native/**', '.github/workflows/native.yml']
+    paths: ['native/**', 'account/**', '.github/workflows/native.yml']
   pull_request:
-    paths: ['native/**', '.github/workflows/native.yml']
+    paths: ['native/**', 'account/**', '.github/workflows/native.yml']
 
 permissions:
   contents: read
@@ -31,6 +31,8 @@ jobs:
           flutter-version: '3.24.5'
       - name: Check RustDesk integration
         run: node native/prepare.cjs upstream
+      - name: Verify account access checks
+        run: node --test account/desktop-access.test.cjs
       - name: Verify native account and terminal
         working-directory: native
         run: |

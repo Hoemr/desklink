@@ -4,7 +4,7 @@
 
 ## RustDesk 原生整合版
 
-`native/` 为 RustDesk 1.5.3 的桌面和移动端连接页加入「Desklink」。应用内登录现有账号，设备卡片可分别打开原生桌面、SSH 终端和原生文件管理器。桌面和文件管理器使用 RustDesk 网络设置里的自建 ID 服务器与公钥，由 RustDesk 设备凭据授权。应用内 SSH 使用账号服务上已保存的 SSH 凭据。
+`native/` 为 RustDesk 1.5.3 的桌面和移动端连接页加入「Desklink」。应用内登录账号后，设备卡片可打开原生桌面、SSH 终端和文件管理器。原生桌面和文件传输通过自建 ID 服务器建连，使用账号服务签发的短期凭证。SSH 使用账号服务上已保存的 SSH 凭据。
 
 在 GitHub Actions 手动运行「Graphical desktop builds」可构建图形客户端。产物使用 `desklink-graphical-*` 命名。Mac 解压后打开 `Desklink.app`，Windows 解压整个目录后打开 `rustdesk.exe`，再从主窗口点「Desklink」。图形客户端以测试包形式提供，Mac 包采用 ad-hoc 签名。连接入口及账号配置见下文。
 
@@ -19,7 +19,7 @@
 | Android | Desklink APK 本身包含「共享屏幕」入口，按 Android 提示授予录屏和操作权限。 |
 | iOS / iPadOS | 在这个方案中用作主控端。 |
 
-macOS 和 Windows 上的 Desklink 使用独立的应用目录、后台服务和设备配置，可与 RustDesk 分别安装和卸载。首次打开 Desklink 会生成新的设备 ID。重新填写自建 ID 服务器及公钥，并在账号入口更新设备备注里的 ID。若同时启用两套应用的 IP 直连，为它们配置不同的监听端口。 [macOS 权限](https://rustdesk.com/docs/en/client/mac/) · [Windows 部署](https://rustdesk.com/docs/en/self-host/client-deployment/) · [手机主控与被控说明](https://rustdesk.com/blog/rustdesk-remote-control-android-ios/?lang=en)
+macOS 和 Windows 上的 Desklink 使用独立的应用目录、后台服务和设备配置，可与 RustDesk 分别安装和卸载。首次打开 Desklink 会生成新的设备 ID。填写自建 ID 服务器及公钥，并在账号服务登记被控设备。若同时启用两套应用的 IP 直连，为它们配置不同的监听端口。 [macOS 权限](https://rustdesk.com/docs/en/client/mac/) · [Windows 部署](https://rustdesk.com/docs/en/self-host/client-deployment/) · [手机主控与被控说明](https://rustdesk.com/blog/rustdesk-remote-control-android-ios/?lang=en)
 
 1. 获取 RustDesk 1.5.3 的源码，应用接入补丁并按上游的对应平台流程构建。 [RustDesk 构建文档](https://rustdesk.com/docs/en/dev/build/)
 
@@ -28,8 +28,19 @@ macOS 和 Windows 上的 Desklink 使用独立的应用目录、后台服务和�
    node native/prepare.cjs rustdesk
    ```
 
-2. 在账号后台给同一个 SSH 设备的备注加一行 `RustDesk ID: 123456789`，替换为该机的 ID。在账号后台保存可自动登录的 SSH 凭据，在 RustDesk 被控机的安全权限里开启文件传输。
-3. 在 RustDesk 的网络设置使用自建 ID 服务器及公钥。在「Desklink」输入账号入口、用户名和密码。开发者也可以用 `--dart-define=DESKLINK_ACCOUNT_URL=https://desklink.example.com/` 预填入口。浏览器版账号入口可继续用于管理设备。
+2. 账号服务使用 `npm start` 加载 Desklink 认证逻辑。在 `meshcentral-data/desklink-devices.json` 登记原生远控设备。键是账号后台的完整节点标识，值包含安装后的 Desklink 设备 ID 和该机的独立密钥。
+
+   ```json
+   {
+     "node//example": {
+       "id": "1234567890",
+       "key": "<64个小写十六进制字符>"
+     }
+   }
+   ```
+
+3. 管理员为每台被控设备生成 32 字节随机密钥。用十六进制把同一份密钥保存到上述记录和该机被控进程配置目录下的 `DesklinkAccess.key`。macOS 登录会话默认为 `~/Library/Preferences/com.hoemr.Desklink/`，Windows 为被控进程对应用户的 `%APPDATA%\Desklink\config\`。密钥文件仅对运行服务的用户和管理员可读。账号服务按账户权限签发短期连接凭证。
+4. 在「Desklink」填账号入口、用户名和密码，登录后点设备的「远程桌面」或「传输文件」。macOS 与 Windows 的 Desklink 被控端验证账号凭证，连接时无需点击接受。在账号后台保存 SSH 登录凭据即可继续使用原有 SSH 终端。开发者也可以用 `--dart-define=DESKLINK_ACCOUNT_URL=https://desklink.example.com/` 预填入口。
 
 RustDesk 衍生客户端沿用上游 AGPL-3.0 许可。 [RustDesk 1.5.3 许可](https://github.com/rustdesk/rustdesk/blob/1.5.3/LICENCE)
 
