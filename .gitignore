@@ -6,3 +6,6 @@
 /desklink.exe
 /account/node_modules/
 /account/meshcentral-*/
+/native/.dart_tool/
+/native/build/
+/native/pubspec.lock

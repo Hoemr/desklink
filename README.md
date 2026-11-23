@@ -2,6 +2,22 @@
 
 同一账号可从 Mac、Windows 和手机浏览器查看设备、远程桌面和使用 Web SSH。账号入口复用开源 MeshCentral。Desklink 命令行也支持 RustDesk 原生客户端和 OpenSSH，持久会话交给被控机上的 tmux。
 
+## RustDesk 原生整合版
+
+`native/` 为 RustDesk 1.5.3 的桌面和移动端连接页加入「Desklink」。应用内登录现有账号，设备卡片可打开 RustDesk 原生桌面或应用内 SSH 终端。桌面使用 RustDesk 网络设置里的自建 ID 服务器与公钥，仍由 RustDesk 设备凭据授权。SSH 使用账号服务上已保存的 SSH 凭据，桌面流量和 SSH 通过各自的连接传输。
+
+1. 获取 RustDesk 1.5.3 的源码，应用接入补丁并按上游的对应平台流程构建。 [RustDesk 构建文档](https://rustdesk.com/docs/en/dev/build/)
+
+   ```sh
+   git clone --branch 1.5.3 --recurse-submodules https://github.com/rustdesk/rustdesk.git
+   node native/prepare.cjs rustdesk
+   ```
+
+2. 在账号后台给同一个 SSH 设备的备注加一行 `RustDesk ID: 123456789`，替换为该机的 ID。这个条目在 App 里同时显示「远程桌面」和「SSH 终端」。在账号后台为该设备保存可自动登录的 SSH 凭据。
+3. 在 RustDesk 的网络设置使用自建 ID 服务器及公钥。在「Desklink」输入账号入口、用户名和密码。开发者也可以用 `--dart-define=DESKLINK_ACCOUNT_URL=https://desklink.example.com/` 预填入口。浏览器版账号入口可继续用于管理设备。
+
+RustDesk 衍生客户端沿用上游 AGPL-3.0 许可。 [RustDesk 1.5.3 许可](https://github.com/rustdesk/rustdesk/blob/1.5.3/LICENCE)
+
 ## 账号登录与设备列表
 
 1. 在常开的 Mac 或 Linux 主机安装 Node.js 20+，进入 `account/`，运行 `npm ci --ignore-scripts`。创建 `meshcentral-data/`，将 [config.example.json](account/config.example.json) 复制为 `meshcentral-data/config.json`。把配置里的 `desklink.example.com` 换成账号入口的 HTTPS 主机名。反向代理在同一台主机运行，转发到 `127.0.0.1:24443`。
