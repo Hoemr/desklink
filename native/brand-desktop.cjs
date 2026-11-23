@@ -52,6 +52,12 @@ change('src/platform/windows/verified_update.rs', [
   ['rustdesk-verified-', 'desklink-verified-'],
 ]);
 
+change('src/updater.rs', [
+  ['fn check_update(manually: bool) -> ResultType<()> {',
+    'fn check_update(manually: bool) -> ResultType<()> {\n    if crate::is_custom_client() {\n        return Ok(());\n    }'],
+  ['/var/run/rustdesk-update.lock', '/var/run/desklink-update.lock'],
+]);
+
 change('libs/portable/src/main.rs', [
   ['RuntimeBroker_rustdesk.exe', 'RuntimeBroker_desklink.exe'],
   ['rustdesk-verified-', 'desklink-verified-'],
