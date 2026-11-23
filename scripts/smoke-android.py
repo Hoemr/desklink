@@ -85,6 +85,12 @@ def tcp_ready():
         return conn.recv(64)
 
 
+def keyboard_visible():
+    state = adb("shell", "dumpsys", "input_method")
+    (REPORT / "input-method.txt").write_bytes(state)
+    return b"mInputShown=true" in state
+
+
 def fixture(log):
     import tkinter as tk
 
@@ -153,24 +159,25 @@ def main():
         wait_for(remote_frame, "coloured remote desktop frame", 35)
         print("PASS Android receives a live X11 desktop from the Desklink link", flush=True)
 
-        # RustDesk 1.5.3 displays an immersive bottom bar on the 480x960 test device.
-        tap(184, 920)
+        # These controls are unlabeled in the RustDesk 1.5.3 accessibility tree.
+        # Use their verified positions on the pinned 480x960, 160 dpi viewport.
+        tap(168, 936)
         tap_node(wait_for(lambda: label("Touch mode"), "Touch mode"))
         control = wait_for(lambda: label("Show virtual mouse"), "virtual mouse toggle")
         tap_node(control)
         screenshot("gesture-settings")
         ui()
         (REPORT / "gesture-settings.xml").write_bytes((REPORT / "latest.xml").read_bytes())
-        tap(444, 924)
-        time.sleep(0.5)
         screenshot("virtual-mouse")
         tap(264, 468)
         wait_for(lambda: (REPORT / "mouse.txt").read_text().count("button 3") > 0, "virtual right-click on the X11 host")
         print("PASS Android virtual mouse sends a right-click", flush=True)
 
-        tap(136, 920)
-        wait_for(lambda: b"mInputShown=true" in adb("shell", "dumpsys", "input_method"), "Android soft keyboard")
+        tap(440, 558)  # Close the gesture help sheet using its floating button.
+        tap(120, 936)  # Open the remote session's keyboard.
+        wait_for(keyboard_visible, "Android soft keyboard")
         screenshot("keyboard")
+        ui()
         adb("shell", "input", "text", "desklink42")
         wait_for(lambda: "desklink42" in (REPORT / "typed.txt").read_text(), "text on the remote desktop")
         print("PASS Android soft keyboard opens and text reaches the desktop", flush=True)
