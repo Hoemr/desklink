@@ -14,10 +14,19 @@
 
 | 系统 | 安装和开启被控 |
 | --- | --- |
-| macOS | 下载对应架构的 `Desklink-macos-*.pkg`。打开 `/Applications/Desklink.app`，授予屏幕录制和辅助功能权限，再通过应用启用被控。后台服务标识为 `com.hoemr.Desklink_service`。 |
+| macOS | 安装用固定证书签发的 `Desklink-macos-*.pkg`。打开 `/Applications/Desklink.app`，授予屏幕录制和辅助功能权限，再通过应用启用被控。后台服务标识为 `com.hoemr.Desklink_service`。 |
 | Windows | 下载对应架构的 `Desklink-windows-*-install.exe`。安装到 `%ProgramFiles%\Desklink`，后台服务名为 `Desklink`。 |
 | Android | Desklink APK 本身包含「共享屏幕」入口，按 Android 提示授予录屏和操作权限。 |
 | iOS / iPadOS | 在这个方案中用作主控端。 |
+
+CI 生成的 macOS `*-test.pkg` 用于安装测试。正式包由持有签名私钥的 Mac 签发。每次升级使用同一张代码签名证书和同一个包标识，首次迁移到这张证书后重新授予录屏和辅助功能权限。
+
+```sh
+export DESKLINK_MACOS_SIGNING_IDENTITY='<证书 SHA-1 指纹>'
+bash native/package-macos.sh sign Desklink-macos-arm64-test.pkg Desklink-macos-arm64.pkg
+```
+
+证书放在登录钥匙串，或用 `DESKLINK_MACOS_SIGNING_KEYCHAIN` 指定签名钥匙串的路径。将同一个指纹用于每次签发，并保管好对应私钥。
 
 macOS 和 Windows 上的 Desklink 使用独立的应用目录、后台服务和设备配置，可与 RustDesk 分别安装和卸载。首次打开 Desklink 会生成新的设备 ID。填写自建 ID 服务器及公钥，并在账号服务登记被控设备。若同时启用两套应用的 IP 直连，为它们配置不同的监听端口。 [macOS 权限](https://rustdesk.com/docs/en/client/mac/) · [Windows 部署](https://rustdesk.com/docs/en/self-host/client-deployment/) · [手机主控与被控说明](https://rustdesk.com/blog/rustdesk-remote-control-android-ios/?lang=en)
 

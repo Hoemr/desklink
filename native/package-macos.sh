@@ -1,31 +1,49 @@
 #!/bin/bash
 set -euo pipefail
 
-if [[ $# != 4 ]]; then
-  printf 'Usage: bash native/package-macos.sh Desklink.app liblibrustdesk.dylib service output.pkg\n' >&2
+if [[ $# != 4 && ( $# != 3 || ${1-} != sign ) ]]; then
+  printf '%s\n' \
+    'Usage: bash native/package-macos.sh Desklink.app liblibrustdesk.dylib service test.pkg' \
+    '       bash native/package-macos.sh sign test.pkg output.pkg' >&2
   exit 2
 fi
-
-source_app="$1"
-engine="$2"
-service="$3"
-output="$4"
-test -x "$source_app/Contents/MacOS/RustDesk"
-test -x "$service"
-test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$source_app/Contents/Info.plist")" = com.hoemr.desklink
-codesign --verify --deep --strict "$source_app"
-arch=$(lipo -archs "$source_app/Contents/MacOS/RustDesk")
-test "$(lipo -archs "$engine")" = "$arch"
-test "$(lipo -archs "$service")" = "$arch"
 
 stage=$(mktemp -d -t desklink-package)
 trap 'python3 -c "import shutil,sys; shutil.rmtree(sys.argv[1])" "$stage"' EXIT
 app="$stage/payload/Desklink.app"
-ditto "$source_app" "$app"
-mv "$app/Contents/MacOS/RustDesk" "$app/Contents/MacOS/Desklink"
-install -m 755 "$engine" "$app/Contents/Frameworks/liblibrustdesk.dylib"
-install -m 755 "$service" "$app/Contents/MacOS/service"
+signing_args=(--sign -)
+if [[ $# == 3 ]]; then
+  identity=${DESKLINK_MACOS_SIGNING_IDENTITY:-}
+  if [[ ! $identity =~ ^[[:xdigit:]]{40}$ ]]; then
+    printf 'Set DESKLINK_MACOS_SIGNING_IDENTITY to the fixed certificate SHA-1 fingerprint (40 hex digits)\n' >&2
+    exit 2
+  fi
+  signing_args=(--sign "$identity")
+  if [[ -n ${DESKLINK_MACOS_SIGNING_KEYCHAIN:-} ]]; then
+    signing_args+=(--keychain "$DESKLINK_MACOS_SIGNING_KEYCHAIN")
+  fi
+  requirement="identifier \"com.hoemr.desklink\" and certificate leaf = H\"$identity\""
+  output="$3"
+  pkgutil --expand-full "$2" "$stage/input"
+  codesign --verify --deep --strict "$stage/input/Payload/Desklink.app"
+  ditto "$stage/input/Payload/Desklink.app" "$app"
+else
+  source_app="$1"
+  engine="$2"
+  service="$3"
+  output="$4"
+  codesign --verify --deep --strict "$source_app"
+  arch=$(lipo -archs "$source_app/Contents/MacOS/RustDesk")
+  test "$(lipo -archs "$engine")" = "$arch"
+  test "$(lipo -archs "$service")" = "$arch"
+  ditto "$source_app" "$app"
+  mv "$app/Contents/MacOS/RustDesk" "$app/Contents/MacOS/Desklink"
+  install -m 755 "$engine" "$app/Contents/Frameworks/liblibrustdesk.dylib"
+  install -m 755 "$service" "$app/Contents/MacOS/service"
+fi
+
 info="$app/Contents/Info.plist"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info")" = com.hoemr.desklink
 /usr/libexec/PlistBuddy -c 'Set :CFBundleExecutable Desklink' -c 'Set :CFBundleName Desklink' \
   -c 'Set :CFBundleURLTypes:0:CFBundleURLName com.hoemr.desklink' \
   -c 'Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 desklink' "$info"
@@ -36,10 +54,16 @@ else
 fi
 
 for component in "$app"/Contents/Frameworks/*.framework "$app"/Contents/Frameworks/*.dylib "$app/Contents/MacOS/service"; do
-  codesign --force --sign - --options 0 --timestamp=none --preserve-metadata=entitlements "$component"
+  codesign --force "${signing_args[@]}" --options 0 --timestamp=none --preserve-metadata=entitlements "$component"
 done
-codesign --force --sign - --options 0 --timestamp=none --preserve-metadata=entitlements "$app"
+if [[ $# == 3 ]]; then
+  signing_args+=(--requirements "=designated => $requirement")
+fi
+codesign --force "${signing_args[@]}" --options 0 --timestamp=none --preserve-metadata=entitlements "$app"
 codesign --verify --deep --strict "$app"
+if [[ $# == 3 ]]; then
+  codesign --verify --strict -R "=$requirement" "$app"
+fi
 test "$("$app/Contents/MacOS/Desklink" --version)" = 1.5.3
 
 pkgbuild --analyze --root "$stage/payload" "$stage/components.plist"

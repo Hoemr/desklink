@@ -126,12 +126,12 @@ jobs:
           "$VCPKG_ROOT/vcpkg" install --triplet "$VCPKG_DEFAULT_TRIPLET" --x-install-root="$VCPKG_ROOT/installed"
           export LIBCLANG_PATH="$(dirname "$(xcrun --find clang)")/../lib"
           cargo +1.81 build --locked --target "$RUST_TARGET" --release --lib --bin service --features "$RUST_FEATURES"
-      - name: Package Desklink
+      - name: Build the macOS test package
         run: |
           test "$(uname -m)" = "$ARCHITECTURE"
           ditto -x -k "graphical/desklink-graphical-macos-$ARCHITECTURE.zip" graphical/app
           engine="upstream/target/$RUST_TARGET/release"
-          bash native/package-macos.sh graphical/app/Desklink.app "$engine/liblibrustdesk.dylib" "$engine/service" "Desklink-macos-$ARCHITECTURE.pkg"
+          bash native/package-macos.sh graphical/app/Desklink.app "$engine/liblibrustdesk.dylib" "$engine/service" "Desklink-macos-$ARCHITECTURE-test.pkg"
       - name: Verify installation, fresh device ID, and launchd service
         run: |
           app=/Applications/Desklink.app
@@ -140,7 +140,7 @@ jobs:
           printf 'id = "123456789"\n' > "$legacy"
           original=$(shasum -a 256 "$legacy")
           test ! -e "$app"
-          sudo installer -pkg "Desklink-macos-$ARCHITECTURE.pkg" -target /
+          sudo installer -pkg "Desklink-macos-$ARCHITECTURE-test.pkg" -target /
           codesign --verify --deep --strict "$app"
           test "$( /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" )" = com.hoemr.desklink
           test "$("$app/Contents/MacOS/Desklink" --version)" = 1.5.3
@@ -162,8 +162,8 @@ jobs:
           sudo launchctl print system/com.hoemr.Desklink_service | python3 -c 'import sys; assert "state = running" in sys.stdin.read()'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: desklink-host-macos-${{ matrix.architecture }}
-          path: Desklink-macos-${{ matrix.architecture }}.pkg
+          name: desklink-host-macos-${{ matrix.architecture }}-test
+          path: Desklink-macos-${{ matrix.architecture }}-test.pkg
           if-no-files-found: error
 
   windows:
